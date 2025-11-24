@@ -98,61 +98,67 @@ local function build_entity_gui(player, entity, registration)
     }
     status_flow.style.vertical_spacing = 4
 
-    -- Entity status
+    -- Entity status lookup table
+    local status_info = {
+        -- Working states
+        [defines.entity_status.working] = {"utility/status_working", {"entity-status.working"}},
+        [defines.entity_status.normal] = {"utility/status_working", {"entity-status.normal"}},
+
+        -- Yellow/warning states
+        [defines.entity_status.low_power] = {"utility/status_yellow", {"entity-status.low-power"}},
+        [defines.entity_status.waiting_for_source_items] = {"utility/status_yellow", {"entity-status.waiting-for-source-items"}},
+        [defines.entity_status.waiting_for_space_in_destination] = {"utility/status_yellow", {"entity-status.waiting-for-space-in-destination"}},
+        [defines.entity_status.charging] = {"utility/status_yellow", {"entity-status.charging"}},
+        [defines.entity_status.waiting_for_target_to_be_built] = {"utility/status_yellow", {"entity-status.waiting-for-target-to-be-built"}},
+        [defines.entity_status.waiting_for_train] = {"utility/status_yellow", {"entity-status.waiting-for-train"}},
+        [defines.entity_status.preparing_rocket_for_launch] = {"utility/status_yellow", {"entity-status.preparing-rocket-for-launch"}},
+        [defines.entity_status.waiting_to_launch_rocket] = {"utility/status_yellow", {"entity-status.waiting-to-launch-rocket"}},
+        [defines.entity_status.waiting_for_more_parts] = {"utility/status_yellow", {"entity-status.waiting-for-more-parts"}},
+        [defines.entity_status.item_ingredient_shortage] = {"utility/status_yellow", {"entity-status.item-ingredient-shortage"}},
+        [defines.entity_status.fluid_ingredient_shortage] = {"utility/status_yellow", {"entity-status.fluid-ingredient-shortage"}},
+        [defines.entity_status.full_output] = {"utility/status_yellow", {"entity-status.full-output"}},
+        [defines.entity_status.not_connected_to_rail] = {"utility/status_yellow", {"entity-status.not-connected-to-rail"}},
+        [defines.entity_status.cant_divide_segments] = {"utility/status_yellow", {"entity-status.cant-divide-segments"}},
+
+        -- Good/active states
+        [defines.entity_status.discharging] = {"utility/status_working", {"entity-status.discharging"}},
+        [defines.entity_status.fully_charged] = {"utility/status_working", {"entity-status.fully-charged"}},
+        [defines.entity_status.launching_rocket] = {"utility/status_working", {"entity-status.launching-rocket"}},
+        [defines.entity_status.networks_connected] = {"utility/status_working", {"entity-status.networks-connected"}},
+
+        -- Not working states
+        [defines.entity_status.no_power] = {"utility/status_not_working", {"entity-status.no-power"}},
+        [defines.entity_status.no_fuel] = {"utility/status_not_working", {"entity-status.no-fuel"}},
+        [defines.entity_status.disabled_by_control_behavior] = {"utility/status_not_working", {"entity-status.disabled"}},
+        [defines.entity_status.disabled_by_script] = {"utility/status_not_working", {"entity-status.disabled-by-script"}},
+        [defines.entity_status.marked_for_deconstruction] = {"utility/status_not_working", {"entity-status.marked-for-deconstruction"}},
+        [defines.entity_status.no_recipe] = {"utility/status_not_working", {"entity-status.no-recipe"}},
+        [defines.entity_status.no_ingredients] = {"utility/status_not_working", {"entity-status.no-ingredients"}},
+        [defines.entity_status.no_input_fluid] = {"utility/status_not_working", {"entity-status.no-input-fluid"}},
+        [defines.entity_status.no_research_in_progress] = {"utility/status_not_working", {"entity-status.no-research-in-progress"}},
+        [defines.entity_status.no_minable_resources] = {"utility/status_not_working", {"entity-status.no-minable-resources"}},
+        [defines.entity_status.no_ammo] = {"utility/status_not_working", {"entity-status.no-ammo"}},
+        [defines.entity_status.missing_required_fluid] = {"utility/status_not_working", {"entity-status.missing-required-fluid"}},
+        [defines.entity_status.missing_science_packs] = {"utility/status_not_working", {"entity-status.missing-science-packs"}},
+        [defines.entity_status.networks_disconnected] = {"utility/status_not_working", {"entity-status.networks-disconnected"}},
+        [defines.entity_status.out_of_logistic_network] = {"utility/status_not_working", {"entity-status.out-of-logistic-network"}},
+        [defines.entity_status.no_modules_to_transmit] = {"utility/status_not_working", {"entity-status.no-modules-to-transmit"}},
+        [defines.entity_status.recharging_after_power_outage] = {"utility/status_not_working", {"entity-status.recharging-after-power-outage"}},
+        [defines.entity_status.frozen] = {"utility/status_not_working", {"entity-status.frozen"}},
+        [defines.entity_status.paused] = {"utility/status_not_working", {"entity-status.paused"}},
+
+        -- Idle states
+        [defines.entity_status.idle] = {"utility/status_yellow", {"entity-status.idle"}},
+    }
+
+    -- Get status display info
     local status = entity.status
     local status_sprite = "utility/status_working"
     local status_caption = {"entity-status.working"}
 
-    if status then
-        if status == defines.entity_status.no_power then
-            status_sprite = "utility/status_not_working"
-            status_caption = {"entity-status.no-power"}
-        elseif status == defines.entity_status.low_power then
-            status_sprite = "utility/status_yellow"
-            status_caption = {"entity-status.low-power"}
-        elseif status == defines.entity_status.no_fuel then
-            status_sprite = "utility/status_not_working"
-            status_caption = {"entity-status.no-fuel"}
-        elseif status == defines.entity_status.disabled_by_control_behavior then
-            status_sprite = "utility/status_not_working"
-            status_caption = {"entity-status.disabled"}
-        elseif status == defines.entity_status.disabled_by_script then
-            status_sprite = "utility/status_not_working"
-            status_caption = {"entity-status.disabled-by-script"}
-        elseif status == defines.entity_status.marked_for_deconstruction then
-            status_sprite = "utility/status_not_working"
-            status_caption = {"entity-status.marked-for-deconstruction"}
-        elseif status == defines.entity_status.no_recipe then
-            status_sprite = "utility/status_not_working"
-            status_caption = {"entity-status.no-recipe"}
-        elseif status == defines.entity_status.no_ingredients then
-            status_sprite = "utility/status_not_working"
-            status_caption = {"entity-status.no-ingredients"}
-        elseif status == defines.entity_status.no_input_fluid then
-            status_sprite = "utility/status_not_working"
-            status_caption = {"entity-status.no-input-fluid"}
-        elseif status == defines.entity_status.no_research_in_progress then
-            status_sprite = "utility/status_not_working"
-            status_caption = {"entity-status.no-research-in-progress"}
-        elseif status == defines.entity_status.no_minable_resources then
-            status_sprite = "utility/status_not_working"
-            status_caption = {"entity-status.no-minable-resources"}
-        elseif status == defines.entity_status.waiting_for_source_items then
-            status_sprite = "utility/status_yellow"
-            status_caption = {"entity-status.waiting-for-source-items"}
-        elseif status == defines.entity_status.waiting_for_space_in_destination then
-            status_sprite = "utility/status_yellow"
-            status_caption = {"entity-status.waiting-for-space-in-destination"}
-        elseif status == defines.entity_status.charging then
-            status_sprite = "utility/status_yellow"
-            status_caption = {"entity-status.charging"}
-        elseif status == defines.entity_status.discharging then
-            status_sprite = "utility/status_working"
-            status_caption = {"entity-status.discharging"}
-        elseif status == defines.entity_status.fully_charged then
-            status_sprite = "utility/status_working"
-            status_caption = {"entity-status.fully-charged"}
-        end
+    if status and status_info[status] then
+        status_sprite = status_info[status][1]
+        status_caption = status_info[status][2]
     end
 
     local status_line = status_flow.add{
@@ -436,6 +442,49 @@ remote.add_interface("entity_gui_lib", {
         end
         table.sort(result, function(a, b) return a.priority > b.priority end)
         return result
+    end,
+
+    ---Refresh/rebuild the GUI content without closing
+    ---@param player_index uint
+    ---@return boolean success
+    refresh = function(player_index)
+        local gui_data = open_guis[player_index]
+        if not gui_data then
+            return false
+        end
+
+        local player = game.get_player(player_index)
+        if not player then
+            return false
+        end
+
+        local frame = player.gui.screen[FRAME_NAME]
+        if not frame or not frame.valid then
+            return false
+        end
+
+        -- Find content container
+        local inner_frame = frame.children[2] -- entity_frame
+        if not inner_frame or not inner_frame.valid then
+            return false
+        end
+
+        local content = inner_frame[CONTENT_NAME]
+        if not content or not content.valid then
+            return false
+        end
+
+        -- Clear existing content
+        content.clear()
+
+        -- Rebuild content via callback
+        local registration = gui_data.registration
+        local entity = gui_data.entity
+        if entity and entity.valid and registration.mod_name and registration.on_build then
+            remote.call(registration.mod_name, registration.on_build, content, entity, player)
+        end
+
+        return true
     end,
 
     ---Get the content container for a player's open GUI

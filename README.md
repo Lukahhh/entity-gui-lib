@@ -138,6 +138,9 @@ local container = remote.call("entity_gui_lib", "get_content", player_index)
 -- Get the entity for a player's open GUI
 local entity = remote.call("entity_gui_lib", "get_entity", player_index)
 
+-- Refresh/rebuild GUI content without closing (useful for live data)
+local success = remote.call("entity_gui_lib", "refresh", player_index)
+
 -- Close a player's GUI programmatically
 remote.call("entity_gui_lib", "close", player_index)
 ```
