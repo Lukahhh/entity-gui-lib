@@ -194,17 +194,34 @@ local function build_entity_gui(player, entity, registration)
     player.opened = frame
 end
 
+---@param key string
+---@return table|nil
+local function get_highest_priority_registration(key)
+    local registrations = registered_entities[key]
+    if not registrations or #registrations == 0 then
+        return nil
+    end
+
+    local highest = registrations[1]
+    for i = 2, #registrations do
+        if registrations[i].priority > highest.priority then
+            highest = registrations[i]
+        end
+    end
+    return highest
+end
+
 ---@param entity LuaEntity
 ---@return table|nil
 local function get_registration(entity)
     -- Check for specific entity name first
-    local by_name = registered_entities[entity.name]
+    local by_name = get_highest_priority_registration(entity.name)
     if by_name then
         return by_name
     end
 
     -- Check for entity type
-    local by_type = registered_entities[entity.type]
+    local by_type = get_highest_priority_registration(entity.type)
     if by_type then
         return by_type
     end
@@ -309,6 +326,19 @@ script.on_event(defines.events.on_player_mined_entity, close_invalid_guis)
 script.on_event(defines.events.on_robot_mined_entity, close_invalid_guis)
 script.on_event(defines.events.on_entity_died, close_invalid_guis)
 
+-- Handle E key to close GUI (toggle-menu linked input)
+script.on_event("entity-gui-lib-toggle", function(event)
+    local player = game.get_player(event.player_index)
+    if not player then
+        return
+    end
+
+    local frame = player.gui.screen[FRAME_NAME]
+    if frame and frame.valid then
+        player.opened = nil
+    end
+end)
+
 -- Initialize
 script.on_init(function()
     storage.open_guis = open_guis
@@ -321,7 +351,7 @@ end)
 -- Remote interface for other mods
 remote.add_interface("entity_gui_lib", {
     ---Register an entity for custom GUI replacement
-    ---@param config table {mod_name: string, entity_name?: string, entity_type?: string, title?: LocalisedString, on_build: string, on_close?: string}
+    ---@param config table {mod_name: string, entity_name?: string, entity_type?: string, title?: LocalisedString, on_build: string, on_close?: string, priority?: number}
     register = function(config)
         if not config then
             error("entity_gui_lib.register: config is required")
@@ -340,18 +370,72 @@ remote.add_interface("entity_gui_lib", {
         end
 
         local key = config.entity_name or config.entity_type
-        registered_entities[key] = {
+        local registration = {
             mod_name = config.mod_name,
             title = config.title,
             on_build = config.on_build,
             on_close = config.on_close,
+            priority = config.priority or 0,
         }
+
+        -- Initialize list if needed
+        if not registered_entities[key] then
+            registered_entities[key] = {}
+        end
+
+        -- Remove existing registration from same mod
+        local registrations = registered_entities[key]
+        for i = #registrations, 1, -1 do
+            if registrations[i].mod_name == config.mod_name then
+                table.remove(registrations, i)
+            end
+        end
+
+        -- Add new registration
+        table.insert(registrations, registration)
     end,
 
-    ---Unregister an entity
+    ---Unregister an entity (removes all registrations from a mod for that entity)
     ---@param entity_name_or_type string
-    unregister = function(entity_name_or_type)
-        registered_entities[entity_name_or_type] = nil
+    ---@param mod_name string|nil If provided, only removes that mod's registration
+    unregister = function(entity_name_or_type, mod_name)
+        local registrations = registered_entities[entity_name_or_type]
+        if not registrations then
+            return
+        end
+
+        if mod_name then
+            -- Remove only this mod's registration
+            for i = #registrations, 1, -1 do
+                if registrations[i].mod_name == mod_name then
+                    table.remove(registrations, i)
+                end
+            end
+        else
+            -- Remove all registrations
+            registered_entities[entity_name_or_type] = nil
+        end
+    end,
+
+    ---Get all registrations for an entity (for conflict checking)
+    ---@param entity_name_or_type string
+    ---@return table[] Array of registrations sorted by priority (highest first)
+    get_registrations = function(entity_name_or_type)
+        local registrations = registered_entities[entity_name_or_type]
+        if not registrations then
+            return {}
+        end
+
+        -- Return a copy sorted by priority descending
+        local result = {}
+        for i, reg in ipairs(registrations) do
+            result[i] = {
+                mod_name = reg.mod_name,
+                priority = reg.priority,
+            }
+        end
+        table.sort(result, function(a, b) return a.priority > b.priority end)
+        return result
     end,
 
     ---Get the content container for a player's open GUI
