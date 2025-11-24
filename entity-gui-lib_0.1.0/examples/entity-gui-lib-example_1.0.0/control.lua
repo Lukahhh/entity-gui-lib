@@ -341,6 +341,132 @@ remote.add_interface("entity_gui_lib_example", {
             end
         end
     end,
+
+    -- Lab GUI builder - demonstrates new GUI element helpers
+    build_lab_gui = function(container, entity, player)
+        container.add{
+            type = "label",
+            caption = "Custom Lab GUI (Helper Demos)",
+            style = "caption_label",
+        }
+
+        local content = container.add{
+            type = "flow",
+            direction = "vertical",
+        }
+        content.style.top_margin = 8
+        content.style.vertical_spacing = 12
+
+        -- Slider example
+        content.add{
+            type = "label",
+            caption = "Slider Helper:",
+            style = "bold_label",
+        }
+        remote.call("entity_gui_lib", "create_slider", content, {
+            label = "Research Speed",
+            min = 0,
+            max = 100,
+            value = 50,
+            step = 5,
+            mod_name = "entity_gui_lib_example",
+            on_change = "on_slider_change",
+            data = {entity_id = entity.unit_number},
+        })
+
+        -- Number input example
+        content.add{
+            type = "label",
+            caption = "Number Input Helper:",
+            style = "bold_label",
+        }
+        remote.call("entity_gui_lib", "create_number_input", content, {
+            label = "Module Count",
+            value = 2,
+            min = 0,
+            max = 10,
+            step = 1,
+            mod_name = "entity_gui_lib_example",
+            on_change = "on_number_change",
+            data = {entity_id = entity.unit_number},
+        })
+
+        -- Dropdown example
+        content.add{
+            type = "label",
+            caption = "Dropdown Helper:",
+            style = "bold_label",
+        }
+        remote.call("entity_gui_lib", "create_dropdown", content, {
+            label = "Priority",
+            items = {"Low", "Normal", "High", "Critical"},
+            values = {"low", "normal", "high", "critical"},
+            selected_index = 2,
+            mod_name = "entity_gui_lib_example",
+            on_change = "on_dropdown_change",
+            data = {entity_id = entity.unit_number},
+        })
+
+        -- Toggle group (checkboxes) example
+        content.add{
+            type = "label",
+            caption = "Checkbox Group:",
+            style = "bold_label",
+        }
+        remote.call("entity_gui_lib", "create_toggle_group", content, {
+            label = "Features",
+            options = {
+                {caption = "Auto-pause", value = "pause", state = false, tooltip = "Pause when full"},
+                {caption = "Notify", value = "notify", state = true, tooltip = "Notify on complete"},
+                {caption = "Recycle", value = "recycle", state = false},
+            },
+            mod_name = "entity_gui_lib_example",
+            on_change = "on_toggle_change",
+            data = {entity_id = entity.unit_number},
+        })
+
+        -- Toggle group (radio buttons with mutual exclusion) example
+        content.add{
+            type = "label",
+            caption = "Radio Button Group:",
+            style = "bold_label",
+        }
+        remote.call("entity_gui_lib", "create_toggle_group", content, {
+            label = "Mode",
+            mutual_exclusion = true,
+            options = {
+                {caption = "Automatic", value = "auto", state = true},
+                {caption = "Manual", value = "manual"},
+                {caption = "Disabled", value = "disabled"},
+            },
+            mod_name = "entity_gui_lib_example",
+            on_change = "on_mode_change",
+            data = {entity_id = entity.unit_number},
+        })
+    end,
+
+    -- Callbacks for the new helpers
+    on_slider_change = function(player, value, data)
+        player.print("Slider changed to: " .. value)
+    end,
+
+    on_number_change = function(player, value, data)
+        player.print("Number input changed to: " .. value)
+    end,
+
+    on_dropdown_change = function(player, index, value, data)
+        player.print("Dropdown changed to: " .. value .. " (index " .. index .. ")")
+    end,
+
+    on_toggle_change = function(player, state, value, data)
+        player.print("Toggle '" .. value .. "' is now: " .. (state and "ON" or "OFF"))
+    end,
+
+    on_mode_change = function(player, state, value, data)
+        if state then
+            player.print("Mode changed to: " .. value)
+        end
+    end,
 })
 
 -- Register GUIs with the library
@@ -394,7 +520,15 @@ local function register_guis()
         update_interval = 10,
     })
 
-    -- Example 6: Priority system demonstration
+    -- Example 6: Custom lab GUI demonstrating new element helpers
+    remote.call("entity_gui_lib", "register", {
+        mod_name = "entity_gui_lib_example",
+        entity_type = "lab",
+        title = "Custom Lab (Helpers Demo)",
+        on_build = "build_lab_gui",
+    })
+
+    -- Example 7: Priority system demonstration
     -- If another mod registered "inserter" with lower priority, ours would win
     -- You can check existing registrations:
     local existing = remote.call("entity_gui_lib", "get_registrations", "inserter")

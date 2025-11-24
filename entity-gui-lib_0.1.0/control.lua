@@ -309,6 +309,21 @@ script.on_event(defines.events.on_gui_closed, function(event)
     open_guis[player.index] = nil
 end)
 
+-- Helper callback storage (defined early for use in event handlers)
+local function get_helper_callbacks()
+    if not storage.helper_callbacks then
+        storage.helper_callbacks = {}
+    end
+    return storage.helper_callbacks
+end
+
+-- Counter for unique element IDs
+local helper_id_counter = 0
+local function get_next_helper_id()
+    helper_id_counter = helper_id_counter + 1
+    return helper_id_counter
+end
+
 script.on_event(defines.events.on_gui_click, function(event)
     local element = event.element
     if not element or not element.valid then
@@ -348,6 +363,49 @@ script.on_event(defines.events.on_gui_click, function(event)
         local confirm_frame = player.gui.screen[GUI_PREFIX .. "confirmation"]
         if confirm_frame and confirm_frame.valid then
             confirm_frame.destroy()
+        end
+        return
+    end
+
+    -- Number input increment/decrement buttons
+    if element.name:find("^" .. GUI_PREFIX .. "number_inc_") or element.name:find("^" .. GUI_PREFIX .. "number_dec_") then
+        local is_increment = element.name:find("^" .. GUI_PREFIX .. "number_inc_")
+        local input_name = element.name:gsub("number_inc_", "number_input_"):gsub("number_dec_", "number_input_")
+
+        local callbacks = get_helper_callbacks()
+        local callback_data = callbacks[input_name]
+        if not callback_data then return end
+
+        -- Find the text field
+        local parent = element.parent
+        if not parent then return end
+
+        local text_field
+        for _, child in pairs(parent.children) do
+            if child.name == input_name then
+                text_field = child
+                break
+            end
+        end
+
+        if not text_field then return end
+
+        local current = tonumber(text_field.text) or callback_data.default or 0
+        local step = callback_data.step or 1
+        local new_value = is_increment and (current + step) or (current - step)
+
+        -- Clamp value
+        if callback_data.min and new_value < callback_data.min then
+            new_value = callback_data.min
+        end
+        if callback_data.max and new_value > callback_data.max then
+            new_value = callback_data.max
+        end
+
+        text_field.text = tostring(new_value)
+
+        if callback_data.mod_name and callback_data.on_change then
+            remote.call(callback_data.mod_name, callback_data.on_change, player, new_value, callback_data.data)
         end
         return
     end
@@ -441,10 +499,124 @@ end)
 -- Initialize
 script.on_init(function()
     storage.open_guis = open_guis
+    storage.helper_callbacks = {}
 end)
 
 script.on_load(function()
     open_guis = storage.open_guis or {}
+end)
+
+-- Handle slider value changes
+script.on_event(defines.events.on_gui_value_changed, function(event)
+    local element = event.element
+    if not element or not element.valid then return end
+    if not element.name:find("^" .. GUI_PREFIX .. "slider_") then return end
+
+    local callbacks = get_helper_callbacks()
+    local callback_data = callbacks[element.name]
+    if not callback_data then return end
+
+    local player = game.get_player(event.player_index)
+    if not player then return end
+
+    -- Update value display if it exists
+    local value_label_name = element.name:gsub("slider_", "slider_value_")
+    local parent = element.parent
+    if parent then
+        for _, child in pairs(parent.children) do
+            if child.name == value_label_name then
+                child.caption = tostring(element.slider_value)
+                break
+            end
+        end
+    end
+
+    -- Call user callback
+    if callback_data.mod_name and callback_data.on_change then
+        remote.call(callback_data.mod_name, callback_data.on_change, player, element.slider_value, callback_data.data)
+    end
+end)
+
+-- Handle dropdown selection changes
+script.on_event(defines.events.on_gui_selection_state_changed, function(event)
+    local element = event.element
+    if not element or not element.valid then return end
+    if not element.name:find("^" .. GUI_PREFIX .. "dropdown_") then return end
+
+    local callbacks = get_helper_callbacks()
+    local callback_data = callbacks[element.name]
+    if not callback_data then return end
+
+    local player = game.get_player(event.player_index)
+    if not player then return end
+
+    if callback_data.mod_name and callback_data.on_change then
+        local selected_index = element.selected_index
+        local selected_value = callback_data.values and callback_data.values[selected_index] or selected_index
+        remote.call(callback_data.mod_name, callback_data.on_change, player, selected_index, selected_value, callback_data.data)
+    end
+end)
+
+-- Handle checkbox/toggle changes
+script.on_event(defines.events.on_gui_checked_state_changed, function(event)
+    local element = event.element
+    if not element or not element.valid then return end
+    if not element.name:find("^" .. GUI_PREFIX .. "toggle_") then return end
+
+    local callbacks = get_helper_callbacks()
+    local callback_data = callbacks[element.name]
+    if not callback_data then return end
+
+    local player = game.get_player(event.player_index)
+    if not player then return end
+
+    -- Handle mutual exclusion for radio button groups
+    if callback_data.group_name and callback_data.mutual_exclusion and element.state then
+        local parent = element.parent
+        if parent then
+            for _, child in pairs(parent.children) do
+                if child.type == "radiobutton" or child.type == "checkbox" then
+                    local child_data = callbacks[child.name]
+                    if child_data and child_data.group_name == callback_data.group_name and child.name ~= element.name then
+                        child.state = false
+                    end
+                end
+            end
+        end
+    end
+
+    if callback_data.mod_name and callback_data.on_change then
+        remote.call(callback_data.mod_name, callback_data.on_change, player, element.state, callback_data.value, callback_data.data)
+    end
+end)
+
+-- Handle number input button clicks and text changes
+script.on_event(defines.events.on_gui_text_changed, function(event)
+    local element = event.element
+    if not element or not element.valid then return end
+    if not element.name:find("^" .. GUI_PREFIX .. "number_input_") then return end
+
+    local callbacks = get_helper_callbacks()
+    local callback_data = callbacks[element.name]
+    if not callback_data then return end
+
+    local player = game.get_player(event.player_index)
+    if not player then return end
+
+    -- Validate and clamp the value
+    local value = tonumber(element.text)
+    if value then
+        if callback_data.min and value < callback_data.min then
+            value = callback_data.min
+        end
+        if callback_data.max and value > callback_data.max then
+            value = callback_data.max
+        end
+
+        if callback_data.mod_name and callback_data.on_change then
+            remote.call(callback_data.mod_name, callback_data.on_change, player, value, callback_data.data)
+        end
+    end
 end)
 
 -- Debug mode flag
@@ -744,6 +916,234 @@ remote.add_interface("entity_gui_lib", {
         }
 
         player.opened = frame
+    end,
+
+    ---Create a labeled slider with value display
+    ---@param container LuaGuiElement Parent container
+    ---@param config table {label?: LocalisedString, min: number, max: number, value?: number, step?: number, mod_name?: string, on_change?: string, data?: any}
+    ---@return LuaGuiElement flow, LuaGuiElement slider
+    create_slider = function(container, config)
+        local id = get_next_helper_id()
+        local slider_name = GUI_PREFIX .. "slider_" .. id
+        local value_name = GUI_PREFIX .. "slider_value_" .. id
+
+        local flow = container.add{
+            type = "flow",
+            direction = "horizontal",
+        }
+        flow.style.vertical_align = "center"
+        flow.style.horizontal_spacing = 8
+
+        if config.label then
+            flow.add{
+                type = "label",
+                caption = config.label,
+            }
+        end
+
+        local slider = flow.add{
+            type = "slider",
+            name = slider_name,
+            minimum_value = config.min or 0,
+            maximum_value = config.max or 100,
+            value = config.value or config.min or 0,
+            value_step = config.step or 1,
+        }
+        slider.style.horizontally_stretchable = true
+
+        local value_label = flow.add{
+            type = "label",
+            name = value_name,
+            caption = tostring(config.value or config.min or 0),
+        }
+        value_label.style.minimal_width = 40
+        value_label.style.horizontal_align = "right"
+
+        -- Store callback
+        if config.mod_name and config.on_change then
+            local callbacks = get_helper_callbacks()
+            callbacks[slider_name] = {
+                mod_name = config.mod_name,
+                on_change = config.on_change,
+                data = config.data,
+            }
+        end
+
+        return flow, slider
+    end,
+
+    ---Create a number input with increment/decrement buttons
+    ---@param container LuaGuiElement Parent container
+    ---@param config table {label?: LocalisedString, value?: number, min?: number, max?: number, step?: number, mod_name?: string, on_change?: string, data?: any}
+    ---@return LuaGuiElement flow, LuaGuiElement textfield
+    create_number_input = function(container, config)
+        local id = get_next_helper_id()
+        local input_name = GUI_PREFIX .. "number_input_" .. id
+        local dec_name = GUI_PREFIX .. "number_dec_" .. id
+        local inc_name = GUI_PREFIX .. "number_inc_" .. id
+
+        local flow = container.add{
+            type = "flow",
+            direction = "horizontal",
+        }
+        flow.style.vertical_align = "center"
+        flow.style.horizontal_spacing = 4
+
+        if config.label then
+            local label = flow.add{
+                type = "label",
+                caption = config.label,
+            }
+            label.style.right_margin = 4
+        end
+
+        flow.add{
+            type = "sprite-button",
+            name = dec_name,
+            sprite = "utility/left_arrow",
+            style = "mini_button",
+            tooltip = {"", "-", config.step or 1},
+        }
+
+        local text_field = flow.add{
+            type = "textfield",
+            name = input_name,
+            text = tostring(config.value or config.min or 0),
+            numeric = true,
+            allow_decimal = true,
+            allow_negative = (config.min or 0) < 0,
+        }
+        text_field.style.width = 60
+        text_field.style.horizontal_align = "center"
+
+        flow.add{
+            type = "sprite-button",
+            name = inc_name,
+            sprite = "utility/right_arrow",
+            style = "mini_button",
+            tooltip = {"", "+", config.step or 1},
+        }
+
+        -- Store callback
+        local callbacks = get_helper_callbacks()
+        callbacks[input_name] = {
+            mod_name = config.mod_name,
+            on_change = config.on_change,
+            min = config.min,
+            max = config.max,
+            step = config.step or 1,
+            default = config.value or config.min or 0,
+            data = config.data,
+        }
+
+        return flow, text_field
+    end,
+
+    ---Create a dropdown with callback handling
+    ---@param container LuaGuiElement Parent container
+    ---@param config table {label?: LocalisedString, items: LocalisedString[], values?: any[], selected_index?: number, mod_name?: string, on_change?: string, data?: any}
+    ---@return LuaGuiElement flow, LuaGuiElement dropdown
+    create_dropdown = function(container, config)
+        local id = get_next_helper_id()
+        local dropdown_name = GUI_PREFIX .. "dropdown_" .. id
+
+        local flow = container.add{
+            type = "flow",
+            direction = "horizontal",
+        }
+        flow.style.vertical_align = "center"
+        flow.style.horizontal_spacing = 8
+
+        if config.label then
+            flow.add{
+                type = "label",
+                caption = config.label,
+            }
+        end
+
+        local dropdown = flow.add{
+            type = "drop-down",
+            name = dropdown_name,
+            items = config.items or {},
+            selected_index = config.selected_index or 1,
+        }
+
+        -- Store callback
+        if config.mod_name and config.on_change then
+            local callbacks = get_helper_callbacks()
+            callbacks[dropdown_name] = {
+                mod_name = config.mod_name,
+                on_change = config.on_change,
+                values = config.values,
+                data = config.data,
+            }
+        end
+
+        return flow, dropdown
+    end,
+
+    ---Create a toggle/checkbox group with optional mutual exclusion
+    ---@param container LuaGuiElement Parent container
+    ---@param config table {label?: LocalisedString, options: table[], use_radiobuttons?: boolean, mutual_exclusion?: boolean, mod_name?: string, on_change?: string, data?: any}
+    ---Options format: {caption: LocalisedString, value: any, state?: boolean, tooltip?: LocalisedString}
+    ---@return LuaGuiElement flow, table<string, LuaGuiElement> toggles
+    create_toggle_group = function(container, config)
+        local id = get_next_helper_id()
+        local group_name = GUI_PREFIX .. "toggle_group_" .. id
+
+        local outer_flow = container.add{
+            type = "flow",
+            direction = "vertical",
+        }
+        outer_flow.style.vertical_spacing = 4
+
+        if config.label then
+            outer_flow.add{
+                type = "label",
+                caption = config.label,
+                style = "caption_label",
+            }
+        end
+
+        local toggle_flow = outer_flow.add{
+            type = "flow",
+            direction = config.horizontal and "horizontal" or "vertical",
+        }
+        if config.horizontal then
+            toggle_flow.style.horizontal_spacing = 8
+        else
+            toggle_flow.style.vertical_spacing = 4
+        end
+
+        local toggles = {}
+        local use_radio = config.use_radiobuttons or config.mutual_exclusion
+
+        for i, option in ipairs(config.options or {}) do
+            local toggle_name = GUI_PREFIX .. "toggle_" .. id .. "_" .. i
+
+            local toggle = toggle_flow.add{
+                type = use_radio and "radiobutton" or "checkbox",
+                name = toggle_name,
+                caption = option.caption,
+                state = option.state or false,
+                tooltip = option.tooltip,
+            }
+
+            toggles[option.value or i] = toggle
+
+            -- Store callback for each toggle
+            local callbacks = get_helper_callbacks()
+            callbacks[toggle_name] = {
+                mod_name = config.mod_name,
+                on_change = config.on_change,
+                value = option.value or i,
+                group_name = group_name,
+                mutual_exclusion = config.mutual_exclusion,
+                data = config.data,
+            }
+        end
+
+        return outer_flow, toggles
     end,
 
     ---Enable or disable debug mode

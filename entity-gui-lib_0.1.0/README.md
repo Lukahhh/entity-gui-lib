@@ -23,6 +23,10 @@ A Factorio 2.0 library mod that provides barebones entity GUIs for mod authors t
 ### Helpers
 - Tabbed interface helper
 - Confirmation dialog helper
+- Slider with label and value display
+- Number input with +/- buttons
+- Dropdown with callback handling
+- Toggle/checkbox group with mutual exclusion option
 - GUI refresh without closing (for live data)
 - Debug mode for logging registrations and events
 
@@ -246,6 +250,97 @@ remote.add_interface("my_mod", {
         player.print("Cancelled")
     end,
 })
+```
+
+#### Slider
+
+Create a labeled slider with automatic value display:
+
+```lua
+remote.add_interface("my_mod", {
+    build_gui = function(container, entity, player)
+        remote.call("entity_gui_lib", "create_slider", container, {
+            label = "Speed",
+            min = 0,
+            max = 100,
+            value = 50,
+            step = 5,
+            mod_name = "my_mod",
+            on_change = "on_speed_change",
+            data = {entity_id = entity.unit_number},
+        })
+    end,
+
+    on_speed_change = function(player, value, data)
+        player.print("Speed set to: " .. value)
+    end,
+})
+```
+
+#### Number Input
+
+Create a text field with increment/decrement buttons:
+
+```lua
+remote.call("entity_gui_lib", "create_number_input", container, {
+    label = "Count",
+    value = 10,
+    min = 1,
+    max = 100,
+    step = 1,
+    mod_name = "my_mod",
+    on_change = "on_count_change",
+})
+```
+
+#### Dropdown
+
+Create a dropdown with callback handling:
+
+```lua
+remote.call("entity_gui_lib", "create_dropdown", container, {
+    label = "Mode",
+    items = {"Option A", "Option B", "Option C"},
+    values = {"a", "b", "c"},  -- optional, maps to callback
+    selected_index = 1,
+    mod_name = "my_mod",
+    on_change = "on_mode_change",
+})
+
+-- Callback signature: function(player, selected_index, selected_value, data)
+```
+
+#### Toggle/Checkbox Group
+
+Create grouped checkboxes or radio buttons:
+
+```lua
+-- Checkboxes (multiple selection)
+remote.call("entity_gui_lib", "create_toggle_group", container, {
+    label = "Features",
+    options = {
+        {caption = "Auto-sort", value = "sort", state = true},
+        {caption = "Filter", value = "filter", state = false},
+        {caption = "Limit", value = "limit", state = false, tooltip = "Limit stack size"},
+    },
+    mod_name = "my_mod",
+    on_change = "on_feature_toggle",
+})
+
+-- Radio buttons (single selection with mutual exclusion)
+remote.call("entity_gui_lib", "create_toggle_group", container, {
+    label = "Priority",
+    mutual_exclusion = true,  -- makes it behave like radio buttons
+    options = {
+        {caption = "Low", value = "low"},
+        {caption = "Normal", value = "normal", state = true},
+        {caption = "High", value = "high"},
+    },
+    mod_name = "my_mod",
+    on_change = "on_priority_change",
+})
+
+-- Callback signature: function(player, state, value, data)
 ```
 
 ### Debug Mode
