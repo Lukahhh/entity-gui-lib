@@ -227,11 +227,11 @@ remote.add_interface("entity_gui_lib_example", {
         }
     end,
 
-    -- Radar GUI builder - demonstrates larger preview size
-    build_radar_gui = function(container, entity, player)
+    -- Accumulator GUI builder - demonstrates larger preview size
+    build_accumulator_gui = function(container, entity, player)
         container.add{
             type = "label",
-            caption = "Custom Radar GUI (large preview)",
+            caption = "Custom Accumulator GUI (large preview)",
             style = "caption_label",
         }
 
@@ -241,15 +241,76 @@ remote.add_interface("entity_gui_lib_example", {
         }
         info.style.top_margin = 8
 
+        -- Energy stored
+        local energy = entity.energy or 0
+        local max_energy = entity.electric_buffer_size or 1
+        local percent = (energy / max_energy) * 100
+
         info.add{
             type = "label",
-            caption = {"", "Scanning range: ", entity.prototype.max_distance_of_sector_revealed or "N/A"},
+            caption = {"", "Charge: ", string.format("%.1f%%", percent)},
+        }
+
+        info.add{
+            type = "progressbar",
+            value = energy / max_energy,
         }
 
         info.add{
             type = "label",
-            caption = {"", "Energy usage: ", string.format("%.0f kW", (entity.prototype.energy_usage or 0) / 1000)},
+            caption = {"", "Energy: ", string.format("%.1f MJ / %.1f MJ", energy / 1000000, max_energy / 1000000)},
         }
+    end,
+
+    -- Mining drill GUI builder - demonstrates another entity type
+    build_drill_gui = function(container, entity, player)
+        container.add{
+            type = "label",
+            caption = "Custom Mining Drill GUI",
+            style = "caption_label",
+        }
+
+        local info = container.add{
+            type = "flow",
+            direction = "vertical",
+        }
+        info.style.top_margin = 8
+
+        -- Mining progress
+        info.add{
+            type = "label",
+            caption = "Mining Progress:",
+        }
+
+        info.add{
+            type = "progressbar",
+            value = entity.mining_progress or 0,
+        }
+
+        -- Mining speed
+        info.add{
+            type = "label",
+            caption = {"", "Speed: ", string.format("%.1f%%", (entity.prototype.mining_speed or 1) * 100)},
+        }
+
+        -- Resource info
+        local resource = entity.mining_target
+        if resource and resource.valid then
+            info.add{
+                type = "label",
+                caption = {"", "Mining: ", resource.localised_name},
+            }
+            info.add{
+                type = "label",
+                caption = {"", "Remaining: ", resource.amount or "N/A"},
+            }
+        else
+            info.add{
+                type = "label",
+                caption = "No resource",
+                style = "bold_red_label",
+            }
+        end
     end,
 })
 
@@ -283,16 +344,24 @@ local function register_guis()
         on_build = "build_container_gui",
     })
 
-    -- Example 4: Custom radar GUI with larger preview
+    -- Example 4: Custom accumulator GUI with larger preview
     remote.call("entity_gui_lib", "register", {
         mod_name = "entity_gui_lib_example",
-        entity_type = "radar",
-        title = "Custom Radar",
-        on_build = "build_radar_gui",
+        entity_type = "accumulator",
+        title = "Custom Accumulator",
+        on_build = "build_accumulator_gui",
         preview_size = 200,  -- Larger preview (default is 148)
     })
 
-    -- Example 5: Priority system demonstration
+    -- Example 5: Custom mining drill GUI
+    remote.call("entity_gui_lib", "register", {
+        mod_name = "entity_gui_lib_example",
+        entity_type = "mining-drill",
+        title = "Custom Mining Drill",
+        on_build = "build_drill_gui",
+    })
+
+    -- Example 6: Priority system demonstration
     -- If another mod registered "inserter" with lower priority, ours would win
     -- You can check existing registrations:
     local existing = remote.call("entity_gui_lib", "get_registrations", "inserter")
