@@ -1,13 +1,14 @@
--- Example mod demonstrating entity-gui-lib
+-- Example mod demonstrating entity-gui-lib features
+-- This showcases: tabs, refresh, confirmation dialogs, priority, preview_size, and more
 
 -- Define the remote interface with callback functions
 remote.add_interface("entity_gui_lib_example", {
-    -- Inserter GUI builder
+    -- Inserter GUI builder - demonstrates basic usage + confirmation dialog
     build_inserter_gui = function(container, entity, player)
         -- Info section
         container.add{
             type = "label",
-            caption = "This is a custom inserter GUI!",
+            caption = "Custom Inserter GUI",
             style = "caption_label",
         }
 
@@ -28,12 +29,13 @@ remote.add_interface("entity_gui_lib_example", {
             caption = {"", "Direction: ", tostring(entity.direction)},
         }
 
-        -- Add a button
+        -- Action buttons
         local button_flow = container.add{
             type = "flow",
             direction = "horizontal",
         }
         button_flow.style.top_margin = 8
+        button_flow.style.horizontal_spacing = 8
 
         button_flow.add{
             type = "button",
@@ -46,17 +48,40 @@ remote.add_interface("entity_gui_lib_example", {
             name = "example_info_button",
             caption = "Print Info",
         }
+
+        -- Destroy button (demonstrates confirmation dialog)
+        button_flow.add{
+            type = "button",
+            name = "example_destroy_button",
+            caption = "Destroy",
+            style = "red_button",
+            tooltip = "Destroy this inserter (with confirmation)",
+        }
     end,
 
     close_inserter_gui = function(entity, player)
         player.print("Closed inserter GUI")
     end,
 
-    -- Assembler GUI builder
+    -- Confirmation dialog callbacks
+    confirm_destroy = function(player, data)
+        local entity = data.entity
+        if entity and entity.valid then
+            player.print("Destroyed " .. entity.name)
+            entity.destroy()
+        end
+        remote.call("entity_gui_lib", "close", player.index)
+    end,
+
+    cancel_destroy = function(player, data)
+        player.print("Destruction cancelled")
+    end,
+
+    -- Assembler GUI builder - demonstrates refresh mechanism
     build_assembler_gui = function(container, entity, player)
         container.add{
             type = "label",
-            caption = "Custom assembling machine interface",
+            caption = "Custom Assembler (with refresh)",
             style = "caption_label",
         }
 
@@ -109,38 +134,45 @@ remote.add_interface("entity_gui_lib_example", {
             type = "label",
             caption = {"", "Speed: ", string.format("%.1f%%", entity.crafting_speed * 100)},
         }
+
+        -- Refresh button to demonstrate refresh feature
+        local refresh_flow = container.add{
+            type = "flow",
+            direction = "horizontal",
+        }
+        refresh_flow.style.top_margin = 8
+
+        refresh_flow.add{
+            type = "button",
+            name = "example_refresh_button",
+            caption = "Refresh",
+            tooltip = "Refresh GUI to see updated progress",
+        }
     end,
 
-    -- Container/chest GUI builder
+    -- Container/chest GUI builder - demonstrates tabbed interface
     build_container_gui = function(gui_container, entity, player)
-        gui_container.add{
-            type = "label",
-            caption = "Custom chest interface",
-            style = "caption_label",
-        }
+        -- Create tabbed interface
+        local _, tabs = remote.call("entity_gui_lib", "create_tabs", gui_container, {
+            {name = "inventory", caption = "Inventory"},
+            {name = "info", caption = "Info"},
+        })
 
-        -- Show inventory slot count
+        -- Inventory tab
         local inventory = entity.get_inventory(defines.inventory.chest)
         if inventory then
-            gui_container.add{
+            tabs.inventory.add{
                 type = "label",
                 caption = {"", "Slots: ", #inventory, " (", inventory.count_empty_stacks(), " empty)"},
             }
 
-            -- Add the actual inventory widget
-            gui_container.add{
-                type = "label",
-                caption = "Inventory:",
-                style = "caption_label",
-            }.style.top_margin = 8
-
-            -- Note: For actual inventory interaction, you'd need more complex handling
-            -- This is just a display example
-            local item_flow = gui_container.add{
+            -- Display inventory items
+            local item_flow = tabs.inventory.add{
                 type = "flow",
                 direction = "horizontal",
             }
             item_flow.style.horizontal_spacing = 4
+            item_flow.style.top_margin = 8
 
             local shown = 0
             for i = 1, #inventory do
@@ -167,21 +199,75 @@ remote.add_interface("entity_gui_lib_example", {
                 }
             end
         end
+
+        -- Info tab
+        tabs.info.add{
+            type = "label",
+            caption = "Container Information",
+            style = "caption_label",
+        }
+
+        local info_flow = tabs.info.add{
+            type = "flow",
+            direction = "vertical",
+        }
+        info_flow.style.top_margin = 8
+
+        info_flow.add{
+            type = "label",
+            caption = {"", "Name: ", entity.name},
+        }
+        info_flow.add{
+            type = "label",
+            caption = {"", "Position: ", entity.position.x, ", ", entity.position.y},
+        }
+        info_flow.add{
+            type = "label",
+            caption = {"", "Health: ", entity.health or "N/A"},
+        }
+    end,
+
+    -- Radar GUI builder - demonstrates larger preview size
+    build_radar_gui = function(container, entity, player)
+        container.add{
+            type = "label",
+            caption = "Custom Radar GUI (large preview)",
+            style = "caption_label",
+        }
+
+        local info = container.add{
+            type = "flow",
+            direction = "vertical",
+        }
+        info.style.top_margin = 8
+
+        info.add{
+            type = "label",
+            caption = {"", "Scanning range: ", entity.prototype.max_distance_of_sector_revealed or "N/A"},
+        }
+
+        info.add{
+            type = "label",
+            caption = {"", "Energy usage: ", string.format("%.0f kW", (entity.prototype.energy_usage or 0) / 1000)},
+        }
     end,
 })
 
 -- Register GUIs with the library
 local function register_guis()
-    -- Example 1: Custom inserter GUI (replaces ALL inserters)
+    -- Enable debug mode to see registrations in log
+    remote.call("entity_gui_lib", "set_debug_mode", true)
+
+    -- Example 1: Custom inserter GUI
     remote.call("entity_gui_lib", "register", {
         mod_name = "entity_gui_lib_example",
         entity_type = "inserter",
-        title = "Custom Inserter GUI",
+        title = "Custom Inserter",
         on_build = "build_inserter_gui",
         on_close = "close_inserter_gui",
     })
 
-    -- Example 2: Custom assembling machine GUI
+    -- Example 2: Custom assembling machine GUI with refresh
     remote.call("entity_gui_lib", "register", {
         mod_name = "entity_gui_lib_example",
         entity_type = "assembling-machine",
@@ -189,13 +275,30 @@ local function register_guis()
         on_build = "build_assembler_gui",
     })
 
-    -- Example 3: Custom container/chest GUI
+    -- Example 3: Custom container/chest GUI with tabs
     remote.call("entity_gui_lib", "register", {
         mod_name = "entity_gui_lib_example",
         entity_type = "container",
         title = "Custom Chest",
         on_build = "build_container_gui",
     })
+
+    -- Example 4: Custom radar GUI with larger preview
+    remote.call("entity_gui_lib", "register", {
+        mod_name = "entity_gui_lib_example",
+        entity_type = "radar",
+        title = "Custom Radar",
+        on_build = "build_radar_gui",
+        preview_size = 200,  -- Larger preview (default is 148)
+    })
+
+    -- Example 5: Priority system demonstration
+    -- If another mod registered "inserter" with lower priority, ours would win
+    -- You can check existing registrations:
+    local existing = remote.call("entity_gui_lib", "get_registrations", "inserter")
+    for _, reg in ipairs(existing) do
+        log("[entity_gui_lib_example] Found registration: " .. reg.mod_name .. " (priority: " .. reg.priority .. ")")
+    end
 end
 
 -- Register on init and load
@@ -214,6 +317,7 @@ script.on_event(defines.events.on_gui_click, function(event)
         return
     end
 
+    -- Rotate inserter
     if element.name == "example_rotate_button" then
         local entity = remote.call("entity_gui_lib", "get_entity", event.player_index)
         if entity and entity.valid then
@@ -221,10 +325,34 @@ script.on_event(defines.events.on_gui_click, function(event)
             player.print("Rotated inserter!")
         end
 
+    -- Print entity info
     elseif element.name == "example_info_button" then
         local entity = remote.call("entity_gui_lib", "get_entity", event.player_index)
         if entity and entity.valid then
             player.print("Entity: " .. entity.name .. " at " .. serpent.line(entity.position))
+        end
+
+    -- Destroy with confirmation
+    elseif element.name == "example_destroy_button" then
+        local entity = remote.call("entity_gui_lib", "get_entity", event.player_index)
+        if entity and entity.valid then
+            remote.call("entity_gui_lib", "show_confirmation", event.player_index, {
+                mod_name = "entity_gui_lib_example",
+                title = "Confirm Destruction",
+                message = {"", "Are you sure you want to destroy this ", entity.localised_name, "?"},
+                confirm_caption = "Destroy",
+                cancel_caption = "Cancel",
+                on_confirm = "confirm_destroy",
+                on_cancel = "cancel_destroy",
+                data = {entity = entity},
+            })
+        end
+
+    -- Refresh assembler GUI
+    elseif element.name == "example_refresh_button" then
+        local success = remote.call("entity_gui_lib", "refresh", event.player_index)
+        if success then
+            player.print("GUI refreshed!")
         end
     end
 end)
