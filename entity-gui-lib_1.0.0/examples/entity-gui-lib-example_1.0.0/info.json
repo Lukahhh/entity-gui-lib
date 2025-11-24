@@ -1,0 +1,12 @@
+{
+    "name": "entity-gui-lib-example",
+    "version": "1.0.0",
+    "title": "Entity GUI Library Example",
+    "author": "Your Name",
+    "description": "Example mod demonstrating entity-gui-lib usage",
+    "factorio_version": "2.0",
+    "dependencies": [
+        "base >= 2.0",
+        "entity-gui-lib >= 1.0.0"
+    ]
+}
