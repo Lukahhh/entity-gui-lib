@@ -91,6 +91,7 @@ script.on_load(register_guis)
 | `on_build` | string | Yes | Name of callback function in your remote interface |
 | `on_close` | string | No | Name of close callback function |
 | `priority` | number | No | Priority for conflict resolution (default: 0, higher wins) |
+| `preview_size` | number | No | Size of entity preview in pixels (default: 148) |
 
 ### Callback Signatures
 

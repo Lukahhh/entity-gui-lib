@@ -45,6 +45,7 @@ local function build_entity_gui(player, entity, registration)
         type = "label",
         caption = title_text,
         style = "frame_title",
+        ignored_by_interaction = true,
     }
     title.drag_target = frame
 
@@ -55,6 +56,8 @@ local function build_entity_gui(player, entity, registration)
     }
     filler.style.height = 24
     filler.style.horizontally_stretchable = true
+    filler.style.left_margin = 4
+    filler.style.right_margin = 4
     filler.drag_target = frame
 
     -- Close button
@@ -62,7 +65,9 @@ local function build_entity_gui(player, entity, registration)
         type = "sprite-button",
         name = GUI_PREFIX .. "close_button",
         sprite = "utility/close",
-        style = "close_button",
+        hovered_sprite = "utility/close_black",
+        clicked_sprite = "utility/close_black",
+        style = "frame_action_button",
         tooltip = {"gui.close-instruction"},
     }
 
@@ -88,8 +93,9 @@ local function build_entity_gui(player, entity, registration)
         style = "wide_entity_button",
     }
     preview.entity = entity
-    preview.style.height = 148
-    preview.style.width = 148
+    local preview_size = registration.preview_size or 148
+    preview.style.height = preview_size
+    preview.style.width = preview_size
 
     -- Status section
     local status_flow = preview_flow.add{
@@ -272,6 +278,11 @@ script.on_event(defines.events.on_gui_opened, function(event)
 end)
 
 script.on_event(defines.events.on_gui_closed, function(event)
+    -- Only handle custom GUI closures
+    if event.gui_type ~= defines.gui_type.custom then
+        return
+    end
+
     local player = game.get_player(event.player_index)
     if not player then
         return
@@ -415,6 +426,7 @@ remote.add_interface("entity_gui_lib", {
             on_build = config.on_build,
             on_close = config.on_close,
             priority = config.priority or 0,
+            preview_size = config.preview_size,
         }
 
         -- Initialize list if needed
