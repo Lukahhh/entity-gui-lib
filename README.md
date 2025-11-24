@@ -143,6 +143,25 @@ local success = remote.call("entity_gui_lib", "refresh", player_index)
 
 -- Close a player's GUI programmatically
 remote.call("entity_gui_lib", "close", player_index)
+
+-- Create a tabbed interface
+local tabbed_pane, tab_contents = remote.call("entity_gui_lib", "create_tabs", container, {
+    {name = "info", caption = "Info"},
+    {name = "settings", caption = "Settings"},
+})
+-- Add content to tabs: tab_contents.info.add{...}
+
+-- Show a confirmation dialog
+remote.call("entity_gui_lib", "show_confirmation", player_index, {
+    mod_name = "my_mod",
+    message = "Are you sure?",
+    on_confirm = "handle_confirm",  -- callback function name
+    on_cancel = "handle_cancel",    -- optional
+    data = {entity_id = 123},       -- optional, passed to callbacks
+})
+
+-- Enable debug logging
+remote.call("entity_gui_lib", "set_debug_mode", true)
 ```
 
 ### Handling GUI Events

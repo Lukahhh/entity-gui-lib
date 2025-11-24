@@ -98,58 +98,62 @@ local function build_entity_gui(player, entity, registration)
     }
     status_flow.style.vertical_spacing = 4
 
-    -- Entity status lookup table
-    local status_info = {
-        -- Working states
-        [defines.entity_status.working] = {"utility/status_working", {"entity-status.working"}},
-        [defines.entity_status.normal] = {"utility/status_working", {"entity-status.normal"}},
+    -- Entity status lookup table (built dynamically to handle missing statuses)
+    local status_info = {}
+    local es = defines.entity_status
 
-        -- Yellow/warning states
-        [defines.entity_status.low_power] = {"utility/status_yellow", {"entity-status.low-power"}},
-        [defines.entity_status.waiting_for_source_items] = {"utility/status_yellow", {"entity-status.waiting-for-source-items"}},
-        [defines.entity_status.waiting_for_space_in_destination] = {"utility/status_yellow", {"entity-status.waiting-for-space-in-destination"}},
-        [defines.entity_status.charging] = {"utility/status_yellow", {"entity-status.charging"}},
-        [defines.entity_status.waiting_for_target_to_be_built] = {"utility/status_yellow", {"entity-status.waiting-for-target-to-be-built"}},
-        [defines.entity_status.waiting_for_train] = {"utility/status_yellow", {"entity-status.waiting-for-train"}},
-        [defines.entity_status.preparing_rocket_for_launch] = {"utility/status_yellow", {"entity-status.preparing-rocket-for-launch"}},
-        [defines.entity_status.waiting_to_launch_rocket] = {"utility/status_yellow", {"entity-status.waiting-to-launch-rocket"}},
-        [defines.entity_status.waiting_for_more_parts] = {"utility/status_yellow", {"entity-status.waiting-for-more-parts"}},
-        [defines.entity_status.item_ingredient_shortage] = {"utility/status_yellow", {"entity-status.item-ingredient-shortage"}},
-        [defines.entity_status.fluid_ingredient_shortage] = {"utility/status_yellow", {"entity-status.fluid-ingredient-shortage"}},
-        [defines.entity_status.full_output] = {"utility/status_yellow", {"entity-status.full-output"}},
-        [defines.entity_status.not_connected_to_rail] = {"utility/status_yellow", {"entity-status.not-connected-to-rail"}},
-        [defines.entity_status.cant_divide_segments] = {"utility/status_yellow", {"entity-status.cant-divide-segments"}},
+    -- Helper to safely add status
+    local function add_status(key, sprite, caption)
+        if key then status_info[key] = {sprite, caption} end
+    end
 
-        -- Good/active states
-        [defines.entity_status.discharging] = {"utility/status_working", {"entity-status.discharging"}},
-        [defines.entity_status.fully_charged] = {"utility/status_working", {"entity-status.fully-charged"}},
-        [defines.entity_status.launching_rocket] = {"utility/status_working", {"entity-status.launching-rocket"}},
-        [defines.entity_status.networks_connected] = {"utility/status_working", {"entity-status.networks-connected"}},
+    -- Working states
+    add_status(es.working, "utility/status_working", {"entity-status.working"})
+    add_status(es.normal, "utility/status_working", {"entity-status.normal"})
 
-        -- Not working states
-        [defines.entity_status.no_power] = {"utility/status_not_working", {"entity-status.no-power"}},
-        [defines.entity_status.no_fuel] = {"utility/status_not_working", {"entity-status.no-fuel"}},
-        [defines.entity_status.disabled_by_control_behavior] = {"utility/status_not_working", {"entity-status.disabled"}},
-        [defines.entity_status.disabled_by_script] = {"utility/status_not_working", {"entity-status.disabled-by-script"}},
-        [defines.entity_status.marked_for_deconstruction] = {"utility/status_not_working", {"entity-status.marked-for-deconstruction"}},
-        [defines.entity_status.no_recipe] = {"utility/status_not_working", {"entity-status.no-recipe"}},
-        [defines.entity_status.no_ingredients] = {"utility/status_not_working", {"entity-status.no-ingredients"}},
-        [defines.entity_status.no_input_fluid] = {"utility/status_not_working", {"entity-status.no-input-fluid"}},
-        [defines.entity_status.no_research_in_progress] = {"utility/status_not_working", {"entity-status.no-research-in-progress"}},
-        [defines.entity_status.no_minable_resources] = {"utility/status_not_working", {"entity-status.no-minable-resources"}},
-        [defines.entity_status.no_ammo] = {"utility/status_not_working", {"entity-status.no-ammo"}},
-        [defines.entity_status.missing_required_fluid] = {"utility/status_not_working", {"entity-status.missing-required-fluid"}},
-        [defines.entity_status.missing_science_packs] = {"utility/status_not_working", {"entity-status.missing-science-packs"}},
-        [defines.entity_status.networks_disconnected] = {"utility/status_not_working", {"entity-status.networks-disconnected"}},
-        [defines.entity_status.out_of_logistic_network] = {"utility/status_not_working", {"entity-status.out-of-logistic-network"}},
-        [defines.entity_status.no_modules_to_transmit] = {"utility/status_not_working", {"entity-status.no-modules-to-transmit"}},
-        [defines.entity_status.recharging_after_power_outage] = {"utility/status_not_working", {"entity-status.recharging-after-power-outage"}},
-        [defines.entity_status.frozen] = {"utility/status_not_working", {"entity-status.frozen"}},
-        [defines.entity_status.paused] = {"utility/status_not_working", {"entity-status.paused"}},
+    -- Yellow/warning states
+    add_status(es.low_power, "utility/status_yellow", {"entity-status.low-power"})
+    add_status(es.waiting_for_source_items, "utility/status_yellow", {"entity-status.waiting-for-source-items"})
+    add_status(es.waiting_for_space_in_destination, "utility/status_yellow", {"entity-status.waiting-for-space-in-destination"})
+    add_status(es.charging, "utility/status_yellow", {"entity-status.charging"})
+    add_status(es.waiting_for_target_to_be_built, "utility/status_yellow", {"entity-status.waiting-for-target-to-be-built"})
+    add_status(es.waiting_for_train, "utility/status_yellow", {"entity-status.waiting-for-train"})
+    add_status(es.preparing_rocket_for_launch, "utility/status_yellow", {"entity-status.preparing-rocket-for-launch"})
+    add_status(es.waiting_to_launch_rocket, "utility/status_yellow", {"entity-status.waiting-to-launch-rocket"})
+    add_status(es.waiting_for_more_parts, "utility/status_yellow", {"entity-status.waiting-for-more-parts"})
+    add_status(es.item_ingredient_shortage, "utility/status_yellow", {"entity-status.item-ingredient-shortage"})
+    add_status(es.fluid_ingredient_shortage, "utility/status_yellow", {"entity-status.fluid-ingredient-shortage"})
+    add_status(es.full_output, "utility/status_yellow", {"entity-status.full-output"})
+    add_status(es.not_connected_to_rail, "utility/status_yellow", {"entity-status.not-connected-to-rail"})
+    add_status(es.cant_divide_segments, "utility/status_yellow", {"entity-status.cant-divide-segments"})
+    add_status(es.idle, "utility/status_yellow", {"entity-status.idle"})
 
-        -- Idle states
-        [defines.entity_status.idle] = {"utility/status_yellow", {"entity-status.idle"}},
-    }
+    -- Good/active states
+    add_status(es.discharging, "utility/status_working", {"entity-status.discharging"})
+    add_status(es.fully_charged, "utility/status_working", {"entity-status.fully-charged"})
+    add_status(es.launching_rocket, "utility/status_working", {"entity-status.launching-rocket"})
+    add_status(es.networks_connected, "utility/status_working", {"entity-status.networks-connected"})
+
+    -- Not working states
+    add_status(es.no_power, "utility/status_not_working", {"entity-status.no-power"})
+    add_status(es.no_fuel, "utility/status_not_working", {"entity-status.no-fuel"})
+    add_status(es.disabled_by_control_behavior, "utility/status_not_working", {"entity-status.disabled"})
+    add_status(es.disabled_by_script, "utility/status_not_working", {"entity-status.disabled-by-script"})
+    add_status(es.marked_for_deconstruction, "utility/status_not_working", {"entity-status.marked-for-deconstruction"})
+    add_status(es.no_recipe, "utility/status_not_working", {"entity-status.no-recipe"})
+    add_status(es.no_ingredients, "utility/status_not_working", {"entity-status.no-ingredients"})
+    add_status(es.no_input_fluid, "utility/status_not_working", {"entity-status.no-input-fluid"})
+    add_status(es.no_research_in_progress, "utility/status_not_working", {"entity-status.no-research-in-progress"})
+    add_status(es.no_minable_resources, "utility/status_not_working", {"entity-status.no-minable-resources"})
+    add_status(es.no_ammo, "utility/status_not_working", {"entity-status.no-ammo"})
+    add_status(es.missing_required_fluid, "utility/status_not_working", {"entity-status.missing-required-fluid"})
+    add_status(es.missing_science_packs, "utility/status_not_working", {"entity-status.missing-science-packs"})
+    add_status(es.networks_disconnected, "utility/status_not_working", {"entity-status.networks-disconnected"})
+    add_status(es.out_of_logistic_network, "utility/status_not_working", {"entity-status.out-of-logistic-network"})
+    add_status(es.no_modules_to_transmit, "utility/status_not_working", {"entity-status.no-modules-to-transmit"})
+    add_status(es.recharging_after_power_outage, "utility/status_not_working", {"entity-status.recharging-after-power-outage"})
+    add_status(es.frozen, "utility/status_not_working", {"entity-status.frozen"})
+    add_status(es.paused, "utility/status_not_working", {"entity-status.paused"})
 
     -- Get status display info
     local status = entity.status
@@ -261,6 +265,10 @@ script.on_event(defines.events.on_gui_opened, function(event)
 
     -- Build custom GUI
     build_entity_gui(player, entity, registration)
+
+    if debug_mode then
+        log("[entity-gui-lib] Opened GUI for " .. entity.name .. " (player: " .. player.name .. ", mod: " .. registration.mod_name .. ")")
+    end
 end)
 
 script.on_event(defines.events.on_gui_closed, function(event)
@@ -295,19 +303,41 @@ script.on_event(defines.events.on_gui_click, function(event)
         return
     end
 
-    if element.name ~= GUI_PREFIX .. "close_button" then
-        return
-    end
-
     local player = game.get_player(event.player_index)
     if not player then
         return
     end
 
-    -- Close the GUI
-    local frame = player.gui.screen[FRAME_NAME]
-    if frame and frame.valid then
-        player.opened = nil
+    -- Close button
+    if element.name == GUI_PREFIX .. "close_button" then
+        local frame = player.gui.screen[FRAME_NAME]
+        if frame and frame.valid then
+            player.opened = nil
+        end
+        return
+    end
+
+    -- Confirmation dialog buttons
+    if element.name == GUI_PREFIX .. "confirm_ok" or element.name == GUI_PREFIX .. "confirm_cancel" then
+        local confirmation = storage.confirmations and storage.confirmations[event.player_index]
+        if confirmation then
+            local callback = element.name == GUI_PREFIX .. "confirm_ok"
+                and confirmation.on_confirm
+                or confirmation.on_cancel
+
+            if callback and confirmation.mod_name then
+                remote.call(confirmation.mod_name, callback, player, confirmation.data)
+            end
+
+            storage.confirmations[event.player_index] = nil
+        end
+
+        -- Close confirmation dialog
+        local confirm_frame = player.gui.screen[GUI_PREFIX .. "confirmation"]
+        if confirm_frame and confirm_frame.valid then
+            confirm_frame.destroy()
+        end
+        return
     end
 end)
 
@@ -354,6 +384,9 @@ script.on_load(function()
     open_guis = storage.open_guis or {}
 end)
 
+-- Debug mode flag
+local debug_mode = false
+
 -- Remote interface for other mods
 remote.add_interface("entity_gui_lib", {
     ---Register an entity for custom GUI replacement
@@ -399,6 +432,10 @@ remote.add_interface("entity_gui_lib", {
 
         -- Add new registration
         table.insert(registrations, registration)
+
+        if debug_mode then
+            log("[entity-gui-lib] Registered: " .. key .. " by " .. config.mod_name .. " (priority: " .. registration.priority .. ")")
+        end
     end,
 
     ---Unregister an entity (removes all registrations from a mod for that entity)
@@ -527,5 +564,134 @@ remote.add_interface("entity_gui_lib", {
         if frame and frame.valid then
             player.opened = nil
         end
+    end,
+
+    ---Create a tabbed pane helper
+    ---@param container LuaGuiElement Parent container to add tabs to
+    ---@param tabs table[] Array of {name: string, caption: LocalisedString}
+    ---@return LuaGuiElement tabbed_pane, table<string, LuaGuiElement> tab_contents
+    create_tabs = function(container, tabs)
+        local tabbed_pane = container.add{
+            type = "tabbed-pane",
+            name = GUI_PREFIX .. "tabbed_pane",
+        }
+
+        local tab_contents = {}
+        for _, tab_def in ipairs(tabs) do
+            local tab = tabbed_pane.add{
+                type = "tab",
+                caption = tab_def.caption,
+            }
+            local content = tabbed_pane.add{
+                type = "flow",
+                name = tab_def.name,
+                direction = "vertical",
+            }
+            tabbed_pane.add_tab(tab, content)
+            tab_contents[tab_def.name] = content
+        end
+
+        return tabbed_pane, tab_contents
+    end,
+
+    ---Show a confirmation dialog
+    ---@param player_index uint
+    ---@param config table {title?: LocalisedString, message: LocalisedString, confirm_caption?: LocalisedString, cancel_caption?: LocalisedString, on_confirm: string, on_cancel?: string, mod_name: string, data?: any}
+    show_confirmation = function(player_index, config)
+        local player = game.get_player(player_index)
+        if not player then
+            return
+        end
+
+        -- Create modal frame
+        local frame = player.gui.screen.add{
+            type = "frame",
+            name = GUI_PREFIX .. "confirmation",
+            direction = "vertical",
+        }
+        frame.auto_center = true
+
+        -- Title
+        local titlebar = frame.add{
+            type = "flow",
+            direction = "horizontal",
+        }
+        titlebar.style.horizontal_spacing = 8
+
+        titlebar.add{
+            type = "label",
+            caption = config.title or {"gui.confirmation"},
+            style = "frame_title",
+        }
+
+        local filler = titlebar.add{
+            type = "empty-widget",
+            style = "draggable_space_header",
+        }
+        filler.style.height = 24
+        filler.style.horizontally_stretchable = true
+        filler.drag_target = frame
+
+        -- Message
+        local content = frame.add{
+            type = "frame",
+            style = "inside_shallow_frame_with_padding",
+            direction = "vertical",
+        }
+
+        content.add{
+            type = "label",
+            caption = config.message,
+        }
+
+        -- Buttons
+        local button_flow = frame.add{
+            type = "flow",
+            direction = "horizontal",
+        }
+        button_flow.style.top_margin = 8
+        button_flow.style.horizontal_align = "right"
+        button_flow.style.horizontally_stretchable = true
+
+        button_flow.add{
+            type = "button",
+            name = GUI_PREFIX .. "confirm_cancel",
+            caption = config.cancel_caption or {"gui.cancel"},
+        }
+
+        button_flow.add{
+            type = "button",
+            name = GUI_PREFIX .. "confirm_ok",
+            caption = config.confirm_caption or {"gui.confirm"},
+            style = "confirm_button",
+        }
+
+        -- Store callback info
+        if not storage.confirmations then
+            storage.confirmations = {}
+        end
+        storage.confirmations[player_index] = {
+            mod_name = config.mod_name,
+            on_confirm = config.on_confirm,
+            on_cancel = config.on_cancel,
+            data = config.data,
+        }
+
+        player.opened = frame
+    end,
+
+    ---Enable or disable debug mode
+    ---@param enabled boolean
+    set_debug_mode = function(enabled)
+        debug_mode = enabled
+        if enabled then
+            log("[entity-gui-lib] Debug mode enabled")
+        end
+    end,
+
+    ---Check if debug mode is enabled
+    ---@return boolean
+    is_debug_mode = function()
+        return debug_mode
     end,
 })
