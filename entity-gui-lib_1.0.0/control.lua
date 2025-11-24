@@ -204,6 +204,7 @@ local function build_entity_gui(player, entity, registration)
     open_guis[player.index] = {
         entity = entity,
         registration = registration,
+        last_update_tick = game.tick,
     }
 
     -- Focus the frame
@@ -373,6 +374,57 @@ script.on_event(defines.events.on_player_mined_entity, close_invalid_guis)
 script.on_event(defines.events.on_robot_mined_entity, close_invalid_guis)
 script.on_event(defines.events.on_entity_died, close_invalid_guis)
 
+-- Handle periodic updates for open GUIs
+script.on_event(defines.events.on_tick, function(event)
+    for player_index, gui_data in pairs(open_guis) do
+        local registration = gui_data.registration
+
+        -- Skip if no update callback
+        if not registration.on_update then
+            goto continue
+        end
+
+        -- Check if enough ticks have passed
+        local interval = registration.update_interval or 10
+        if event.tick - gui_data.last_update_tick < interval then
+            goto continue
+        end
+
+        -- Update timestamp
+        gui_data.last_update_tick = event.tick
+
+        -- Get player and content
+        local player = game.get_player(player_index)
+        if not player then
+            goto continue
+        end
+
+        local frame = player.gui.screen[FRAME_NAME]
+        if not frame or not frame.valid then
+            goto continue
+        end
+
+        -- Find content container
+        local inner_frame = frame.children[2]
+        if not inner_frame or not inner_frame.valid then
+            goto continue
+        end
+
+        local content = inner_frame[CONTENT_NAME]
+        if not content or not content.valid then
+            goto continue
+        end
+
+        -- Call update callback
+        local entity = gui_data.entity
+        if entity and entity.valid and registration.mod_name then
+            remote.call(registration.mod_name, registration.on_update, content, entity, player)
+        end
+
+        ::continue::
+    end
+end)
+
 -- Handle E key to close GUI (toggle-menu linked input)
 script.on_event("entity-gui-lib-toggle", function(event)
     local player = game.get_player(event.player_index)
@@ -425,6 +477,8 @@ remote.add_interface("entity_gui_lib", {
             title = config.title,
             on_build = config.on_build,
             on_close = config.on_close,
+            on_update = config.on_update,
+            update_interval = config.update_interval or 10,
             priority = config.priority or 0,
             preview_size = config.preview_size,
         }

@@ -150,6 +150,20 @@ remote.add_interface("entity_gui_lib_example", {
         }
     end,
 
+    -- Assembler update callback - called every 10 ticks
+    update_assembler_gui = function(content, entity, player)
+        -- Find and update the progress bar
+        for _, child in pairs(content.children) do
+            if child.type == "flow" then
+                for _, subchild in pairs(child.children) do
+                    if subchild.name == "example_progress_bar" then
+                        subchild.value = entity.crafting_progress or 0
+                    end
+                end
+            end
+        end
+    end,
+
     -- Container/chest GUI builder - demonstrates tabbed interface
     build_container_gui = function(gui_container, entity, player)
         -- Create tabbed interface
@@ -284,6 +298,7 @@ remote.add_interface("entity_gui_lib_example", {
 
         info.add{
             type = "progressbar",
+            name = "example_drill_progress",
             value = entity.mining_progress or 0,
         }
 
@@ -312,6 +327,20 @@ remote.add_interface("entity_gui_lib_example", {
             }
         end
     end,
+
+    -- Mining drill update callback - called every 10 ticks
+    update_drill_gui = function(content, entity, player)
+        -- Find and update the progress bar
+        for _, child in pairs(content.children) do
+            if child.type == "flow" then
+                for _, subchild in pairs(child.children) do
+                    if subchild.name == "example_drill_progress" then
+                        subchild.value = entity.mining_progress or 0
+                    end
+                end
+            end
+        end
+    end,
 })
 
 -- Register GUIs with the library
@@ -328,12 +357,14 @@ local function register_guis()
         on_close = "close_inserter_gui",
     })
 
-    -- Example 2: Custom assembling machine GUI with refresh
+    -- Example 2: Custom assembling machine GUI with auto-refresh
     remote.call("entity_gui_lib", "register", {
         mod_name = "entity_gui_lib_example",
         entity_type = "assembling-machine",
         title = "Custom Assembler",
         on_build = "build_assembler_gui",
+        on_update = "update_assembler_gui",
+        update_interval = 10,  -- Update every 10 ticks (~6 times/sec)
     })
 
     -- Example 3: Custom container/chest GUI with tabs
@@ -353,12 +384,14 @@ local function register_guis()
         preview_size = 200,  -- Larger preview (default is 148)
     })
 
-    -- Example 5: Custom mining drill GUI
+    -- Example 5: Custom mining drill GUI with auto-refresh
     remote.call("entity_gui_lib", "register", {
         mod_name = "entity_gui_lib_example",
         entity_type = "mining-drill",
         title = "Custom Mining Drill",
         on_build = "build_drill_gui",
+        on_update = "update_drill_gui",
+        update_interval = 10,
     })
 
     -- Example 6: Priority system demonstration

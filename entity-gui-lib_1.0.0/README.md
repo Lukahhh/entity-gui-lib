@@ -90,6 +90,8 @@ script.on_load(register_guis)
 | `title` | LocalisedString | No | Custom title (defaults to entity name) |
 | `on_build` | string | Yes | Name of callback function in your remote interface |
 | `on_close` | string | No | Name of close callback function |
+| `on_update` | string | No | Name of update callback for auto-refresh |
+| `update_interval` | number | No | Ticks between updates (default: 10, ~6 times/sec) |
 | `priority` | number | No | Priority for conflict resolution (default: 0, higher wins) |
 | `preview_size` | number | No | Size of entity preview in pixels (default: 148) |
 
@@ -103,6 +105,44 @@ script.on_load(register_guis)
 **on_close**: `function(entity, player)`
 - `entity`: LuaEntity - The entity (may be invalid if destroyed)
 - `player`: LuaPlayer - The player who closed the GUI
+
+**on_update**: `function(content, entity, player)`
+- `content`: LuaGuiElement - The content container (same as on_build)
+- `entity`: LuaEntity - The entity the GUI is showing
+- `player`: LuaPlayer - The player viewing the GUI
+
+### Auto-Refresh Example
+
+For live-updating GUIs (progress bars, energy levels, etc.), use `on_update`:
+
+```lua
+remote.add_interface("my_mod", {
+    build_drill_gui = function(container, entity, player)
+        container.add{
+            type = "progressbar",
+            name = "my_progress",
+            value = entity.mining_progress or 0,
+        }
+    end,
+
+    update_drill_gui = function(content, entity, player)
+        -- Find and update the progress bar
+        for _, child in pairs(content.children) do
+            if child.name == "my_progress" then
+                child.value = entity.mining_progress or 0
+            end
+        end
+    end,
+})
+
+remote.call("entity_gui_lib", "register", {
+    mod_name = "my_mod",
+    entity_type = "mining-drill",
+    on_build = "build_drill_gui",
+    on_update = "update_drill_gui",
+    update_interval = 10,  -- Update every 10 ticks
+})
+```
 
 ### Multiple Registrations & Priority
 
