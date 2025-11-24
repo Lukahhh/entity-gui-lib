@@ -1,0 +1,22 @@
+---------------------------------------------------------------------------------------------------
+Version: 0.1.0
+Date: 2024
+  Features:
+    - Initial release of Entity GUI Library
+    - Automatic interception and replacement of vanilla entity GUIs
+    - Vanilla-styled frame with draggable titlebar and close button
+    - Entity preview widget with configurable size (preview_size option)
+    - Comprehensive entity status display (35+ status types)
+    - E key closes GUI to match vanilla behavior
+    - Remote interface API for mod registration
+    - Support for both entity_name and entity_type registration
+    - on_build callback for adding custom GUI content
+    - on_close callback for cleanup when GUI closes
+    - on_update callback with configurable update_interval for auto-refreshing GUIs
+    - Priority system for handling conflicts between multiple mods
+    - Tabbed interface helper (create_tabs)
+    - Confirmation dialog helper (show_confirmation)
+    - GUI refresh function to rebuild content without closing
+    - Debug mode for logging registrations and GUI events
+    - Locale support with translatable strings
+    - Example mod demonstrating all features

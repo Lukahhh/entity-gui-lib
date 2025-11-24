@@ -1,8 +1,8 @@
 {
     "name": "entity-gui-lib",
-    "version": "1.0.0",
+    "version": "0.1.0",
     "title": "Entity GUI Library",
-    "author": "Your Name",
+    "author": "Lukah",
     "contact": "",
     "homepage": "",
     "description": "A library for creating custom entity GUIs that replace vanilla ones. Provides a barebones frame with title, close button, entity preview, and status.",
