@@ -409,6 +409,60 @@ script.on_event(defines.events.on_gui_click, function(event)
         end
         return
     end
+
+    -- Inventory slot click handling
+    if element.name:find("^" .. GUI_PREFIX .. "inv_slot_") then
+        local callbacks = get_helper_callbacks()
+        local callback_data = callbacks[element.name]
+        if not callback_data then return end
+
+        if callback_data.mod_name and callback_data.on_click then
+            local slot_index = callback_data.slot_index
+            local item_stack = callback_data.item_stack
+            remote.call(callback_data.mod_name, callback_data.on_click, player, slot_index, item_stack, callback_data.data)
+        end
+        return
+    end
+
+    -- Color picker swatch click handling
+    if element.name:find("^" .. GUI_PREFIX .. "color_swatch_") then
+        local callbacks = get_helper_callbacks()
+        local callback_data = callbacks[element.name]
+        if not callback_data then return end
+
+        -- Find the RGB sliders/inputs in the parent and get values
+        local parent = element.parent
+        if not parent then return end
+
+        -- This is just the preview swatch, actual color changes happen via sliders
+        return
+    end
+
+    -- Item selector button click handling
+    if element.name:find("^" .. GUI_PREFIX .. "item_btn_") then
+        local callbacks = get_helper_callbacks()
+        local callback_data = callbacks[element.name]
+        if not callback_data then return end
+
+        if callback_data.mod_name and callback_data.on_change then
+            local item_name = callback_data.item_name or element.tags.item_name
+            remote.call(callback_data.mod_name, callback_data.on_change, player, item_name, callback_data.data)
+        end
+        return
+    end
+
+    -- Recipe selector button click handling
+    if element.name:find("^" .. GUI_PREFIX .. "recipe_btn_") then
+        local callbacks = get_helper_callbacks()
+        local callback_data = callbacks[element.name]
+        if not callback_data then return end
+
+        if callback_data.mod_name and callback_data.on_change then
+            local recipe_name = callback_data.recipe_name or element.tags.recipe_name
+            remote.call(callback_data.mod_name, callback_data.on_change, player, recipe_name, callback_data.data)
+        end
+        return
+    end
 end)
 
 -- Handle entity destruction while GUI is open
@@ -510,30 +564,96 @@ end)
 script.on_event(defines.events.on_gui_value_changed, function(event)
     local element = event.element
     if not element or not element.valid then return end
-    if not element.name:find("^" .. GUI_PREFIX .. "slider_") then return end
 
     local callbacks = get_helper_callbacks()
-    local callback_data = callbacks[element.name]
-    if not callback_data then return end
-
     local player = game.get_player(event.player_index)
     if not player then return end
 
-    -- Update value display if it exists
-    local value_label_name = element.name:gsub("slider_", "slider_value_")
-    local parent = element.parent
-    if parent then
-        for _, child in pairs(parent.children) do
-            if child.name == value_label_name then
-                child.caption = tostring(element.slider_value)
-                break
+    -- Regular slider handling
+    if element.name:find("^" .. GUI_PREFIX .. "slider_") and not element.name:find("color_slider") then
+        local callback_data = callbacks[element.name]
+        if not callback_data then return end
+
+        -- Update value display if it exists
+        local value_label_name = element.name:gsub("slider_", "slider_value_")
+        local parent = element.parent
+        if parent then
+            for _, child in pairs(parent.children) do
+                if child.name == value_label_name then
+                    child.caption = tostring(element.slider_value)
+                    break
+                end
             end
         end
+
+        -- Call user callback
+        if callback_data.mod_name and callback_data.on_change then
+            remote.call(callback_data.mod_name, callback_data.on_change, player, element.slider_value, callback_data.data)
+        end
+        return
     end
 
-    -- Call user callback
-    if callback_data.mod_name and callback_data.on_change then
-        remote.call(callback_data.mod_name, callback_data.on_change, player, element.slider_value, callback_data.data)
+    -- Color picker slider handling
+    if element.name:find("^" .. GUI_PREFIX .. "color_slider_") then
+        local callback_data = callbacks[element.name]
+        if not callback_data then return end
+
+        -- Update value label
+        local value_label_name = element.name:gsub("color_slider_", "color_value_")
+        local parent = element.parent
+        if parent then
+            for _, child in pairs(parent.children) do
+                if child.name == value_label_name then
+                    child.caption = tostring(math.floor(element.slider_value))
+                    break
+                end
+            end
+        end
+
+        -- Get all color values and build color object
+        local color_picker_id = callback_data.color_picker_id
+        local color = {r = 0, g = 0, b = 0, a = 1}
+
+        -- Find sibling sliders in the outer flow
+        local outer_flow = parent and parent.parent
+        if outer_flow then
+            for _, child in pairs(outer_flow.children) do
+                if child.type == "flow" then
+                    for _, subchild in pairs(child.children) do
+                        if subchild.type == "slider" and subchild.name:find("color_slider_" .. color_picker_id) then
+                            local channel = subchild.name:match("_([rgba])$")
+                            if channel then
+                                color[channel] = subchild.slider_value / 255
+                            end
+                        end
+                    end
+                end
+            end
+        end
+
+        -- Update swatch tooltip
+        local swatch_name = callback_data.swatch_name
+        if swatch_name and outer_flow then
+            for _, child in pairs(outer_flow.children) do
+                if child.type == "flow" then
+                    for _, subchild in pairs(child.children) do
+                        if subchild.name == swatch_name then
+                            local r = math.floor(color.r * 255)
+                            local g = math.floor(color.g * 255)
+                            local b = math.floor(color.b * 255)
+                            subchild.tooltip = {"", "RGB: ", r, ", ", g, ", ", b}
+                            break
+                        end
+                    end
+                end
+            end
+        end
+
+        -- Call user callback with full color
+        if callback_data.mod_name and callback_data.on_change then
+            remote.call(callback_data.mod_name, callback_data.on_change, player, color, callback_data.data)
+        end
+        return
     end
 end)
 
@@ -594,7 +714,78 @@ end)
 script.on_event(defines.events.on_gui_text_changed, function(event)
     local element = event.element
     if not element or not element.valid then return end
-    if not element.name:find("^" .. GUI_PREFIX .. "number_input_") then return end
+
+    local callbacks = get_helper_callbacks()
+    local player = game.get_player(event.player_index)
+    if not player then return end
+
+    -- Number input handling
+    if element.name:find("^" .. GUI_PREFIX .. "number_input_") then
+        local callback_data = callbacks[element.name]
+        if not callback_data then return end
+
+        -- Validate and clamp the value
+        local value = tonumber(element.text)
+        if value then
+            if callback_data.min and value < callback_data.min then
+                value = callback_data.min
+            end
+            if callback_data.max and value > callback_data.max then
+                value = callback_data.max
+            end
+
+            if callback_data.mod_name and callback_data.on_change then
+                remote.call(callback_data.mod_name, callback_data.on_change, player, value, callback_data.data)
+            end
+        end
+        return
+    end
+
+    -- Item selector search handling
+    if element.name:find("^" .. GUI_PREFIX .. "item_search_") then
+        local callback_data = callbacks[element.name]
+        if not callback_data then return end
+
+        local search_text = string.lower(element.text or "")
+        local scroll_pane = callback_data.scroll_pane
+        if not scroll_pane or not scroll_pane.valid then return end
+
+        -- Filter items based on search
+        for _, child in pairs(scroll_pane.children) do
+            if child.valid then
+                local item_name = child.tags and child.tags.item_name or child.name:gsub(GUI_PREFIX .. "item_button_", "")
+                local visible = search_text == "" or string.find(string.lower(item_name), search_text, 1, true)
+                child.visible = visible
+            end
+        end
+        return
+    end
+
+    -- Recipe selector search handling
+    if element.name:find("^" .. GUI_PREFIX .. "recipe_search_") then
+        local callback_data = callbacks[element.name]
+        if not callback_data then return end
+
+        local search_text = string.lower(element.text or "")
+        local scroll_pane = callback_data.scroll_pane
+        if not scroll_pane or not scroll_pane.valid then return end
+
+        -- Filter recipes based on search
+        for _, child in pairs(scroll_pane.children) do
+            if child.valid then
+                local recipe_name = child.tags and child.tags.recipe_name or ""
+                local visible = search_text == "" or string.find(string.lower(recipe_name), search_text, 1, true)
+                child.visible = visible
+            end
+        end
+        return
+    end
+end)
+
+-- Handle choose-elem-button selection (for item/recipe/signal selectors)
+script.on_event(defines.events.on_gui_elem_changed, function(event)
+    local element = event.element
+    if not element or not element.valid then return end
 
     local callbacks = get_helper_callbacks()
     local callback_data = callbacks[element.name]
@@ -603,19 +794,9 @@ script.on_event(defines.events.on_gui_text_changed, function(event)
     local player = game.get_player(event.player_index)
     if not player then return end
 
-    -- Validate and clamp the value
-    local value = tonumber(element.text)
-    if value then
-        if callback_data.min and value < callback_data.min then
-            value = callback_data.min
-        end
-        if callback_data.max and value > callback_data.max then
-            value = callback_data.max
-        end
-
-        if callback_data.mod_name and callback_data.on_change then
-            remote.call(callback_data.mod_name, callback_data.on_change, player, value, callback_data.data)
-        end
+    if callback_data.mod_name and callback_data.on_change then
+        local elem_value = element.elem_value
+        remote.call(callback_data.mod_name, callback_data.on_change, player, elem_value, callback_data.data)
     end
 end)
 
@@ -1144,6 +1325,454 @@ remote.add_interface("entity_gui_lib", {
         end
 
         return outer_flow, toggles
+    end,
+
+    ---Create an inventory display with slot buttons
+    ---@param container LuaGuiElement Parent container
+    ---@param config table {inventory: LuaInventory, columns?: number, read_only?: boolean, show_empty?: boolean, mod_name?: string, on_click?: string, data?: any}
+    ---@return LuaGuiElement scroll_pane, LuaGuiElement table
+    create_inventory_display = function(container, config)
+        local id = get_next_helper_id()
+        local inventory = config.inventory
+        if not inventory or not inventory.valid then
+            error("entity_gui_lib.create_inventory_display: valid inventory is required")
+        end
+
+        local columns = config.columns or 10
+        local show_empty = config.show_empty ~= false
+
+        local scroll_pane = container.add{
+            type = "scroll-pane",
+            name = GUI_PREFIX .. "inv_scroll_" .. id,
+            horizontal_scroll_policy = "never",
+            vertical_scroll_policy = "auto-and-reserve-space",
+        }
+        scroll_pane.style.maximal_height = 200
+
+        local inv_table = scroll_pane.add{
+            type = "table",
+            name = GUI_PREFIX .. "inv_table_" .. id,
+            column_count = columns,
+        }
+        inv_table.style.horizontal_spacing = 0
+        inv_table.style.vertical_spacing = 0
+
+        local callbacks = get_helper_callbacks()
+
+        for i = 1, #inventory do
+            local stack = inventory[i]
+            local slot_name = GUI_PREFIX .. "inv_slot_" .. id .. "_" .. i
+
+            if stack and stack.valid_for_read then
+                local button = inv_table.add{
+                    type = "sprite-button",
+                    name = slot_name,
+                    sprite = "item/" .. stack.name,
+                    number = stack.count,
+                    tooltip = stack.prototype.localised_name,
+                    style = "slot_button",
+                }
+
+                if config.mod_name and config.on_click then
+                    callbacks[slot_name] = {
+                        mod_name = config.mod_name,
+                        on_click = config.on_click,
+                        slot_index = i,
+                        item_stack = {name = stack.name, count = stack.count},
+                        data = config.data,
+                    }
+                end
+            elseif show_empty then
+                inv_table.add{
+                    type = "sprite-button",
+                    name = slot_name,
+                    style = "slot_button",
+                }
+            end
+        end
+
+        return scroll_pane, inv_table
+    end,
+
+    ---Create a recipe selector with search and preview
+    ---@param container LuaGuiElement Parent container
+    ---@param config table {player: LuaPlayer, force?: LuaForce, filter?: table, show_search?: boolean, columns?: number, mod_name?: string, on_select?: string, data?: any}
+    ---@return LuaGuiElement flow, LuaGuiElement|nil selected_button
+    create_recipe_selector = function(container, config)
+        local id = get_next_helper_id()
+        local player = config.player
+        if not player then
+            error("entity_gui_lib.create_recipe_selector: player is required")
+        end
+
+        local force = config.force or player.force
+        local columns = config.columns or 10
+        local show_search = config.show_search ~= false
+
+        local outer_flow = container.add{
+            type = "flow",
+            direction = "vertical",
+        }
+        outer_flow.style.vertical_spacing = 4
+
+        -- Search box
+        local search_field
+        if show_search then
+            local search_flow = outer_flow.add{
+                type = "flow",
+                direction = "horizontal",
+            }
+            search_flow.style.vertical_align = "center"
+
+            search_flow.add{
+                type = "sprite",
+                sprite = "utility/search_icon",
+            }
+
+            search_field = search_flow.add{
+                type = "textfield",
+                name = GUI_PREFIX .. "recipe_search_" .. id,
+            }
+            search_field.style.width = 200
+        end
+
+        -- Recipe scroll pane
+        local scroll_pane = outer_flow.add{
+            type = "scroll-pane",
+            name = GUI_PREFIX .. "recipe_scroll_" .. id,
+            horizontal_scroll_policy = "never",
+            vertical_scroll_policy = "auto-and-reserve-space",
+        }
+        scroll_pane.style.maximal_height = 200
+
+        local recipe_table = scroll_pane.add{
+            type = "table",
+            name = GUI_PREFIX .. "recipe_table_" .. id,
+            column_count = columns,
+        }
+        recipe_table.style.horizontal_spacing = 0
+        recipe_table.style.vertical_spacing = 0
+
+        local callbacks = get_helper_callbacks()
+
+        -- Store search callback data
+        if search_field then
+            callbacks[search_field.name] = {
+                scroll_pane = recipe_table,
+            }
+        end
+
+        -- Get recipes based on filter or all available
+        local recipes = {}
+        if config.filter then
+            recipes = prototypes.get_recipe_filtered(config.filter)
+        else
+            for name, recipe in pairs(prototypes.recipe) do
+                if force.recipes[name] and force.recipes[name].enabled then
+                    recipes[name] = recipe
+                end
+            end
+        end
+
+        for name, recipe in pairs(recipes) do
+            local button_name = GUI_PREFIX .. "recipe_btn_" .. id .. "_" .. name
+
+            local button = recipe_table.add{
+                type = "sprite-button",
+                name = button_name,
+                sprite = "recipe/" .. name,
+                tooltip = recipe.localised_name,
+                style = "slot_button",
+                tags = {recipe_name = name},
+            }
+
+            if config.mod_name and config.on_select then
+                callbacks[button_name] = {
+                    mod_name = config.mod_name,
+                    on_change = config.on_select,
+                    data = config.data,
+                    recipe_name = name,
+                }
+            end
+        end
+
+        return outer_flow, nil
+    end,
+
+    ---Create an item selector with search and filtering
+    ---@param container LuaGuiElement Parent container
+    ---@param config table {filter?: table, show_search?: boolean, columns?: number, mod_name?: string, on_select?: string, data?: any}
+    ---@return LuaGuiElement flow
+    create_item_selector = function(container, config)
+        local id = get_next_helper_id()
+        local columns = config.columns or 10
+        local show_search = config.show_search ~= false
+
+        local outer_flow = container.add{
+            type = "flow",
+            direction = "vertical",
+        }
+        outer_flow.style.vertical_spacing = 4
+
+        -- Search box
+        local search_field
+        if show_search then
+            local search_flow = outer_flow.add{
+                type = "flow",
+                direction = "horizontal",
+            }
+            search_flow.style.vertical_align = "center"
+
+            search_flow.add{
+                type = "sprite",
+                sprite = "utility/search_icon",
+            }
+
+            search_field = search_flow.add{
+                type = "textfield",
+                name = GUI_PREFIX .. "item_search_" .. id,
+            }
+            search_field.style.width = 200
+        end
+
+        -- Item scroll pane
+        local scroll_pane = outer_flow.add{
+            type = "scroll-pane",
+            name = GUI_PREFIX .. "item_scroll_" .. id,
+            horizontal_scroll_policy = "never",
+            vertical_scroll_policy = "auto-and-reserve-space",
+        }
+        scroll_pane.style.maximal_height = 200
+
+        local item_table = scroll_pane.add{
+            type = "table",
+            name = GUI_PREFIX .. "item_table_" .. id,
+            column_count = columns,
+        }
+        item_table.style.horizontal_spacing = 0
+        item_table.style.vertical_spacing = 0
+
+        local callbacks = get_helper_callbacks()
+
+        -- Store search callback data
+        if search_field then
+            callbacks[search_field.name] = {
+                scroll_pane = item_table,
+            }
+        end
+
+        -- Get items based on filter or all
+        local items = {}
+        if config.filter then
+            items = prototypes.get_item_filtered(config.filter)
+        else
+            items = prototypes.item
+        end
+
+        for name, item in pairs(items) do
+            local button_name = GUI_PREFIX .. "item_btn_" .. id .. "_" .. name
+
+            local button = item_table.add{
+                type = "sprite-button",
+                name = button_name,
+                sprite = "item/" .. name,
+                tooltip = item.localised_name,
+                style = "slot_button",
+                tags = {item_name = name},
+            }
+
+            if config.mod_name and config.on_select then
+                callbacks[button_name] = {
+                    mod_name = config.mod_name,
+                    on_change = config.on_select,
+                    data = config.data,
+                    item_name = name,
+                }
+            end
+        end
+
+        return outer_flow
+    end,
+
+    ---Create a simple item/recipe/signal choose-elem-button
+    ---@param container LuaGuiElement Parent container
+    ---@param config table {elem_type: string ("item"|"recipe"|"signal"|"fluid"|"entity"), value?: any, mod_name?: string, on_change?: string, data?: any}
+    ---@return LuaGuiElement button
+    create_elem_button = function(container, config)
+        local id = get_next_helper_id()
+        local button_name = GUI_PREFIX .. "elem_btn_" .. id
+
+        local elem_type = config.elem_type or "item"
+
+        local button = container.add{
+            type = "choose-elem-button",
+            name = button_name,
+            elem_type = elem_type,
+        }
+
+        if config.value then
+            button.elem_value = config.value
+        end
+
+        if config.mod_name and config.on_change then
+            local callbacks = get_helper_callbacks()
+            callbacks[button_name] = {
+                mod_name = config.mod_name,
+                on_change = config.on_change,
+                data = config.data,
+            }
+        end
+
+        return button
+    end,
+
+    ---Create a signal selector for circuit network signals
+    ---@param container LuaGuiElement Parent container
+    ---@param config table {value?: SignalID, mod_name?: string, on_change?: string, data?: any}
+    ---@return LuaGuiElement button
+    create_signal_selector = function(container, config)
+        local id = get_next_helper_id()
+        local button_name = GUI_PREFIX .. "signal_btn_" .. id
+
+        local button = container.add{
+            type = "choose-elem-button",
+            name = button_name,
+            elem_type = "signal",
+        }
+
+        if config.value then
+            button.elem_value = config.value
+        end
+
+        if config.mod_name and config.on_change then
+            local callbacks = get_helper_callbacks()
+            callbacks[button_name] = {
+                mod_name = config.mod_name,
+                on_change = config.on_change,
+                data = config.data,
+            }
+        end
+
+        return button
+    end,
+
+    ---Create a color picker with RGB sliders
+    ---@param container LuaGuiElement Parent container
+    ---@param config table {color?: Color, show_alpha?: boolean, mod_name?: string, on_change?: string, data?: any}
+    ---@return LuaGuiElement flow, table sliders
+    create_color_picker = function(container, config)
+        local id = get_next_helper_id()
+        local color = config.color or {r = 1, g = 1, b = 1, a = 1}
+        local show_alpha = config.show_alpha or false
+
+        local outer_flow = container.add{
+            type = "flow",
+            direction = "vertical",
+        }
+        outer_flow.style.vertical_spacing = 4
+
+        -- Color preview swatch
+        local preview_flow = outer_flow.add{
+            type = "flow",
+            direction = "horizontal",
+        }
+        preview_flow.style.vertical_align = "center"
+        preview_flow.style.horizontal_spacing = 8
+
+        preview_flow.add{
+            type = "label",
+            caption = "Preview:",
+        }
+
+        local swatch_name = GUI_PREFIX .. "color_swatch_" .. id
+        local swatch = preview_flow.add{
+            type = "sprite-button",
+            name = swatch_name,
+            style = "slot_button",
+        }
+        swatch.style.width = 32
+        swatch.style.height = 32
+
+        -- Helper to update swatch color
+        local function update_swatch()
+            -- Factorio doesn't support direct background color on sprite-buttons,
+            -- so we'll use a workaround with the tooltip showing the RGB values
+            local r = math.floor((color.r or 1) * 255)
+            local g = math.floor((color.g or 1) * 255)
+            local b = math.floor((color.b or 1) * 255)
+            swatch.tooltip = {"", "RGB: ", r, ", ", g, ", ", b}
+        end
+        update_swatch()
+
+        local callbacks = get_helper_callbacks()
+        local sliders = {}
+
+        -- Create RGB sliders
+        local channels = {
+            {name = "r", label = "R", color_key = "r"},
+            {name = "g", label = "G", color_key = "g"},
+            {name = "b", label = "B", color_key = "b"},
+        }
+
+        if show_alpha then
+            table.insert(channels, {name = "a", label = "A", color_key = "a"})
+        end
+
+        for _, channel in ipairs(channels) do
+            local slider_name = GUI_PREFIX .. "color_slider_" .. id .. "_" .. channel.name
+            local value_name = GUI_PREFIX .. "color_value_" .. id .. "_" .. channel.name
+
+            local channel_flow = outer_flow.add{
+                type = "flow",
+                direction = "horizontal",
+            }
+            channel_flow.style.vertical_align = "center"
+            channel_flow.style.horizontal_spacing = 8
+
+            channel_flow.add{
+                type = "label",
+                caption = channel.label .. ":",
+            }.style.minimal_width = 20
+
+            local slider = channel_flow.add{
+                type = "slider",
+                name = slider_name,
+                minimum_value = 0,
+                maximum_value = 255,
+                value = math.floor((color[channel.color_key] or 1) * 255),
+                value_step = 1,
+            }
+            slider.style.horizontally_stretchable = true
+
+            local value_label = channel_flow.add{
+                type = "label",
+                name = value_name,
+                caption = tostring(math.floor((color[channel.color_key] or 1) * 255)),
+            }
+            value_label.style.minimal_width = 30
+            value_label.style.horizontal_align = "right"
+
+            sliders[channel.name] = slider
+
+            -- Store callback for slider
+            callbacks[slider_name] = {
+                mod_name = config.mod_name,
+                on_change = config.on_change,
+                channel = channel.color_key,
+                color_picker_id = id,
+                swatch_name = swatch_name,
+                data = config.data,
+                is_color_slider = true,
+            }
+        end
+
+        -- Store reference to all sliders for the swatch
+        callbacks[swatch_name] = {
+            sliders = sliders,
+            color_picker_id = id,
+        }
+
+        return outer_flow, sliders
     end,
 
     ---Enable or disable debug mode

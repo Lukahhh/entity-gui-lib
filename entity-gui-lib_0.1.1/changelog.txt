@@ -1,0 +1,72 @@
+---------------------------------------------------------------------------------------------------
+Version: 0.1.1
+Date: 2025-11-25
+  Features:
+    - Added create_slider helper - Labeled slider with automatic value display
+      - Returns flow and slider elements
+      - Auto-updates value label on change
+      - Callback: function(player, value, data)
+    - Added create_number_input helper - Text field with +/- buttons
+      - Numeric validation and clamping
+      - Configurable min/max/step
+      - Callback: function(player, value, data)
+    - Added create_dropdown helper - Dropdown with callback handling
+      - Optional value mapping (items → values)
+      - Callback: function(player, selected_index, selected_value, data)
+    - Added create_toggle_group helper - Grouped checkboxes/radiobuttons
+      - mutual_exclusion = true for radio button behavior
+      - Callback: function(player, state, value, data)
+    - Added create_inventory_display helper - Show entity inventories with slot buttons
+      - Configurable columns and empty slot visibility
+      - Callback: function(player, slot_index, item_stack, data)
+    - Added create_recipe_selector helper - Searchable recipe picker
+      - Prototype filtering support
+      - Real-time search filtering
+      - Callback: function(player, recipe_name, data)
+    - Added create_item_selector helper - Searchable item picker
+      - Prototype filtering support
+      - Real-time search filtering
+      - Callback: function(player, item_name, data)
+    - Added create_elem_button helper - Simple choose-elem-button wrapper
+      - Supports item, recipe, signal, fluid, entity types
+      - Callback: function(player, elem_value, data)
+    - Added create_signal_selector helper - Circuit network signal picker
+      - Uses Factorio's built-in signal selector
+      - Callback: function(player, signal_id, data)
+    - Added create_color_picker helper - RGB color selection with sliders
+      - Optional alpha channel support
+      - Live preview tooltip
+      - Callback: function(player, color, data)
+  Event Handlers:
+    - on_gui_value_changed for sliders and color picker
+    - on_gui_selection_state_changed for dropdowns
+    - on_gui_checked_state_changed for toggles
+    - on_gui_text_changed for number inputs and search fields
+    - on_gui_elem_changed for element buttons and signal selectors
+    - Click handling for +/- buttons, inventory slots, item/recipe selectors
+  Storage:
+    - Added storage.helper_callbacks for persisting callback data
+
+
+---------------------------------------------------------------------------------------------------
+Version: 0.1.0
+Date: 2025-11-24
+  Features:
+    - Initial release of Entity GUI Library
+    - Automatic interception and replacement of vanilla entity GUIs
+    - Vanilla-styled frame with draggable titlebar and close button
+    - Entity preview widget with configurable size (preview_size option)
+    - Comprehensive entity status display (35+ status types)
+    - E key closes GUI to match vanilla behavior
+    - Remote interface API for mod registration
+    - Support for both entity_name and entity_type registration
+    - on_build callback for adding custom GUI content
+    - on_close callback for cleanup when GUI closes
+    - on_update callback with configurable update_interval for auto-refreshing GUIs
+    - Priority system for handling conflicts between multiple mods
+    - Tabbed interface helper (create_tabs)
+    - Confirmation dialog helper (show_confirmation)
+    - GUI refresh function to rebuild content without closing
+    - Debug mode for logging registrations and GUI events
+    - Locale support with translatable strings
+    - Example mod demonstrating all features

@@ -27,6 +27,12 @@ A Factorio 2.0 library mod that provides barebones entity GUIs for mod authors t
 - Number input with +/- buttons
 - Dropdown with callback handling
 - Toggle/checkbox group with mutual exclusion option
+- Inventory display with clickable slots
+- Recipe selector with search and filtering
+- Item selector with search and filtering
+- Signal selector for circuit network signals
+- Element button (choose-elem-button wrapper)
+- Color picker with RGB sliders
 - GUI refresh without closing (for live data)
 - Debug mode for logging registrations and events
 
@@ -341,6 +347,113 @@ remote.call("entity_gui_lib", "create_toggle_group", container, {
 })
 
 -- Callback signature: function(player, state, value, data)
+```
+
+#### Inventory Display
+
+Display an entity's inventory with clickable slot buttons:
+
+```lua
+remote.add_interface("my_mod", {
+    build_gui = function(container, entity, player)
+        local inventory = entity.get_inventory(defines.inventory.chest)
+        if inventory then
+            remote.call("entity_gui_lib", "create_inventory_display", container, {
+                inventory = inventory,
+                columns = 10,           -- optional, default 10
+                show_empty = true,      -- optional, show empty slots
+                mod_name = "my_mod",
+                on_click = "on_slot_click",
+                data = {entity_id = entity.unit_number},
+            })
+        end
+    end,
+
+    on_slot_click = function(player, slot_index, item_stack, data)
+        player.print("Clicked slot " .. slot_index .. " containing " .. (item_stack and item_stack.name or "nothing"))
+    end,
+})
+```
+
+#### Recipe Selector
+
+Create a searchable recipe picker with filtering:
+
+```lua
+remote.call("entity_gui_lib", "create_recipe_selector", container, {
+    player = player,
+    force = player.force,       -- optional, defaults to player's force
+    filter = {{filter = "category", category = "crafting"}},  -- optional prototype filter
+    show_search = true,         -- optional, default true
+    columns = 10,               -- optional, default 10
+    mod_name = "my_mod",
+    on_select = "on_recipe_selected",
+})
+
+-- Callback signature: function(player, recipe_name, data)
+```
+
+#### Item Selector
+
+Create a searchable item picker with filtering:
+
+```lua
+remote.call("entity_gui_lib", "create_item_selector", container, {
+    filter = {{filter = "type", type = "tool"}},  -- optional prototype filter
+    show_search = true,         -- optional, default true
+    columns = 10,               -- optional, default 10
+    mod_name = "my_mod",
+    on_select = "on_item_selected",
+})
+
+-- Callback signature: function(player, item_name, data)
+```
+
+#### Element Button
+
+Create a simple choose-elem-button for items, recipes, signals, fluids, or entities:
+
+```lua
+-- Item picker button
+remote.call("entity_gui_lib", "create_elem_button", container, {
+    elem_type = "item",         -- "item", "recipe", "signal", "fluid", or "entity"
+    value = "iron-plate",       -- optional initial value
+    mod_name = "my_mod",
+    on_change = "on_elem_changed",
+})
+
+-- Callback signature: function(player, elem_value, data)
+```
+
+#### Signal Selector
+
+Create a circuit network signal selector:
+
+```lua
+remote.call("entity_gui_lib", "create_signal_selector", container, {
+    value = {type = "item", name = "iron-plate"},  -- optional initial SignalID
+    mod_name = "my_mod",
+    on_change = "on_signal_changed",
+})
+
+-- Callback signature: function(player, signal_id, data)
+-- signal_id is a SignalID: {type = "item"|"fluid"|"virtual", name = string}
+```
+
+#### Color Picker
+
+Create an RGB color picker with sliders:
+
+```lua
+remote.call("entity_gui_lib", "create_color_picker", container, {
+    color = {r = 1, g = 0.5, b = 0, a = 1},  -- optional initial color (0-1 range)
+    show_alpha = false,         -- optional, show alpha slider
+    mod_name = "my_mod",
+    on_change = "on_color_changed",
+})
+
+-- Callback signature: function(player, color, data)
+-- color is {r = 0-1, g = 0-1, b = 0-1, a = 0-1}
 ```
 
 ### Debug Mode

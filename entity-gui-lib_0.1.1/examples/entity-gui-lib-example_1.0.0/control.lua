@@ -467,6 +467,177 @@ remote.add_interface("entity_gui_lib_example", {
             player.print("Mode changed to: " .. value)
         end
     end,
+
+    -- Furnace GUI builder - demonstrates new common pattern helpers
+    build_furnace_gui = function(container, entity, player)
+        -- Create tabbed interface for organization
+        local _, tabs = remote.call("entity_gui_lib", "create_tabs", container, {
+            {name = "inventory", caption = "Inventory"},
+            {name = "settings", caption = "Settings"},
+            {name = "signals", caption = "Signals"},
+        })
+
+        -- Inventory tab - demonstrate inventory display
+        tabs.inventory.add{
+            type = "label",
+            caption = "Fuel Inventory:",
+            style = "bold_label",
+        }
+        local fuel_inv = entity.get_inventory(defines.inventory.fuel)
+        if fuel_inv then
+            remote.call("entity_gui_lib", "create_inventory_display", tabs.inventory, {
+                inventory = fuel_inv,
+                columns = 5,
+                show_empty = true,
+                mod_name = "entity_gui_lib_example",
+                on_click = "on_inv_slot_click",
+                data = {entity_id = entity.unit_number, inv_type = "fuel"},
+            })
+        end
+
+        tabs.inventory.add{
+            type = "label",
+            caption = "Output Inventory:",
+            style = "bold_label",
+        }.style.top_margin = 8
+        local output_inv = entity.get_inventory(defines.inventory.furnace_result)
+        if output_inv then
+            remote.call("entity_gui_lib", "create_inventory_display", tabs.inventory, {
+                inventory = output_inv,
+                columns = 5,
+                mod_name = "entity_gui_lib_example",
+                on_click = "on_inv_slot_click",
+                data = {entity_id = entity.unit_number, inv_type = "output"},
+            })
+        end
+
+        -- Settings tab - demonstrate color picker and elem buttons
+        tabs.settings.add{
+            type = "label",
+            caption = "Select Item Filter:",
+            style = "bold_label",
+        }
+        remote.call("entity_gui_lib", "create_elem_button", tabs.settings, {
+            elem_type = "item",
+            mod_name = "entity_gui_lib_example",
+            on_change = "on_elem_selected",
+            data = {entity_id = entity.unit_number},
+        })
+
+        tabs.settings.add{
+            type = "label",
+            caption = "Entity Color:",
+            style = "bold_label",
+        }.style.top_margin = 12
+        remote.call("entity_gui_lib", "create_color_picker", tabs.settings, {
+            color = entity.color or {r = 1, g = 1, b = 1},
+            show_alpha = false,
+            mod_name = "entity_gui_lib_example",
+            on_change = "on_color_change",
+            data = {entity_id = entity.unit_number},
+        })
+
+        -- Signals tab - demonstrate signal selector
+        tabs.signals.add{
+            type = "label",
+            caption = "Circuit Signal:",
+            style = "bold_label",
+        }
+        local signal_flow = tabs.signals.add{
+            type = "flow",
+            direction = "horizontal",
+        }
+        signal_flow.style.vertical_align = "center"
+        signal_flow.style.horizontal_spacing = 8
+
+        signal_flow.add{
+            type = "label",
+            caption = "Output Signal:",
+        }
+        remote.call("entity_gui_lib", "create_signal_selector", signal_flow, {
+            mod_name = "entity_gui_lib_example",
+            on_change = "on_signal_select",
+            data = {entity_id = entity.unit_number},
+        })
+    end,
+
+    -- Roboport GUI builder - demonstrates recipe and item selectors
+    build_roboport_gui = function(container, entity, player)
+        local _, tabs = remote.call("entity_gui_lib", "create_tabs", container, {
+            {name = "items", caption = "Items"},
+            {name = "recipes", caption = "Recipes"},
+        })
+
+        -- Items tab - demonstrate item selector with filter
+        tabs.items.add{
+            type = "label",
+            caption = "Select an item (tools only):",
+            style = "bold_label",
+        }
+        remote.call("entity_gui_lib", "create_item_selector", tabs.items, {
+            filter = {{filter = "type", type = "tool"}},
+            show_search = true,
+            columns = 8,
+            mod_name = "entity_gui_lib_example",
+            on_select = "on_item_select",
+            data = {entity_id = entity.unit_number},
+        })
+
+        -- Recipes tab - demonstrate recipe selector
+        tabs.recipes.add{
+            type = "label",
+            caption = "Select a recipe:",
+            style = "bold_label",
+        }
+        remote.call("entity_gui_lib", "create_recipe_selector", tabs.recipes, {
+            player = player,
+            show_search = true,
+            columns = 8,
+            mod_name = "entity_gui_lib_example",
+            on_select = "on_recipe_select",
+            data = {entity_id = entity.unit_number},
+        })
+    end,
+
+    -- Callbacks for new pattern helpers
+    on_inv_slot_click = function(player, slot_index, item_stack, data)
+        if item_stack then
+            player.print("Clicked " .. data.inv_type .. " slot " .. slot_index .. ": " .. item_stack.name .. " x" .. item_stack.count)
+        else
+            player.print("Clicked empty " .. data.inv_type .. " slot " .. slot_index)
+        end
+    end,
+
+    on_elem_selected = function(player, elem_value, data)
+        if elem_value then
+            player.print("Selected element: " .. tostring(elem_value))
+        else
+            player.print("Cleared element selection")
+        end
+    end,
+
+    on_color_change = function(player, color, data)
+        local r = math.floor(color.r * 255)
+        local g = math.floor(color.g * 255)
+        local b = math.floor(color.b * 255)
+        player.print("Color changed to RGB(" .. r .. ", " .. g .. ", " .. b .. ")")
+    end,
+
+    on_signal_select = function(player, signal_id, data)
+        if signal_id then
+            player.print("Selected signal: " .. signal_id.type .. "/" .. signal_id.name)
+        else
+            player.print("Cleared signal selection")
+        end
+    end,
+
+    on_item_select = function(player, item_name, data)
+        player.print("Selected item: " .. item_name)
+    end,
+
+    on_recipe_select = function(player, recipe_name, data)
+        player.print("Selected recipe: " .. recipe_name)
+    end,
 })
 
 -- Register GUIs with the library
@@ -528,7 +699,23 @@ local function register_guis()
         on_build = "build_lab_gui",
     })
 
-    -- Example 7: Priority system demonstration
+    -- Example 7: Custom furnace GUI demonstrating new pattern helpers
+    remote.call("entity_gui_lib", "register", {
+        mod_name = "entity_gui_lib_example",
+        entity_type = "furnace",
+        title = "Custom Furnace (Pattern Helpers)",
+        on_build = "build_furnace_gui",
+    })
+
+    -- Example 8: Custom roboport GUI demonstrating item/recipe selectors
+    remote.call("entity_gui_lib", "register", {
+        mod_name = "entity_gui_lib_example",
+        entity_type = "roboport",
+        title = "Custom Roboport (Selectors)",
+        on_build = "build_roboport_gui",
+    })
+
+    -- Example 9: Priority system demonstration
     -- If another mod registered "inserter" with lower priority, ours would win
     -- You can check existing registrations:
     local existing = remote.call("entity_gui_lib", "get_registrations", "inserter")
