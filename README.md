@@ -1,14 +1,30 @@
 # Entity GUI Library
 
-A Factorio library mod that provides barebones entity GUIs for mod authors to extend. Automatically replaces vanilla entity GUIs with customizable frames that include entity preview, status display, and a content area for your custom controls.
+A Factorio 2.0 library mod that provides barebones entity GUIs for mod authors to extend. Automatically replaces vanilla entity GUIs with customizable frames that include entity preview, status display, and a content area for your custom controls.
 
 ## Features
 
+### Core
 - Proper vanilla-styled frame with titlebar and close button
-- Entity preview and status display
+- Entity preview and status display (35+ status types supported)
 - Automatically intercepts and replaces vanilla entity GUIs
 - Clean API via remote interface
 - Supports both entity name and entity type registration
+
+### Keyboard Support
+- E key closes GUI (matches vanilla behavior)
+- Escape key closes GUI
+
+### Multi-Mod Support
+- Priority system for handling conflicts between mods
+- Check existing registrations before registering
+- Per-mod unregister support
+
+### Helpers
+- Tabbed interface helper
+- Confirmation dialog helper
+- GUI refresh without closing (for live data)
+- Debug mode for logging registrations and events
 
 ## Installation
 
@@ -76,6 +92,17 @@ script.on_load(register_guis)
 | `on_close` | string | No | Name of close callback function |
 | `priority` | number | No | Priority for conflict resolution (default: 0, higher wins) |
 
+### Callback Signatures
+
+**on_build**: `function(container, entity, player)`
+- `container`: LuaGuiElement - Flow element to add your GUI children to
+- `entity`: LuaEntity - The entity the GUI was opened for
+- `player`: LuaPlayer - The player who opened the GUI
+
+**on_close**: `function(entity, player)`
+- `entity`: LuaEntity - The entity (may be invalid if destroyed)
+- `player`: LuaPlayer - The player who closed the GUI
+
 ### Multiple Registrations & Priority
 
 When multiple mods register for the same entity, the highest priority wins:
@@ -106,18 +133,9 @@ for _, reg in ipairs(existing) do
 end
 ```
 
-### Callback Signatures
+## Remote Interface Functions
 
-**on_build**: `function(container, entity, player)`
-- `container`: LuaGuiElement - Flow element to add your GUI children to
-- `entity`: LuaEntity - The entity the GUI was opened for
-- `player`: LuaPlayer - The player who opened the GUI
-
-**on_close**: `function(entity, player)`
-- `entity`: LuaEntity - The entity (may be invalid if destroyed)
-- `player`: LuaPlayer - The player who closed the GUI
-
-### Remote Interface Functions
+### Core Functions
 
 ```lua
 -- Register an entity GUI
@@ -143,28 +161,76 @@ local success = remote.call("entity_gui_lib", "refresh", player_index)
 
 -- Close a player's GUI programmatically
 remote.call("entity_gui_lib", "close", player_index)
+```
 
--- Create a tabbed interface
+### Helper Functions
+
+#### Tabbed Interface
+
+```lua
+-- In your on_build callback:
 local tabbed_pane, tab_contents = remote.call("entity_gui_lib", "create_tabs", container, {
     {name = "info", caption = "Info"},
     {name = "settings", caption = "Settings"},
 })
--- Add content to tabs: tab_contents.info.add{...}
 
--- Show a confirmation dialog
-remote.call("entity_gui_lib", "show_confirmation", player_index, {
-    mod_name = "my_mod",
-    message = "Are you sure?",
-    on_confirm = "handle_confirm",  -- callback function name
-    on_cancel = "handle_cancel",    -- optional
-    data = {entity_id = 123},       -- optional, passed to callbacks
-})
-
--- Enable debug logging
-remote.call("entity_gui_lib", "set_debug_mode", true)
+-- Add content to each tab
+tab_contents.info.add{type = "label", caption = "Info tab content"}
+tab_contents.settings.add{type = "label", caption = "Settings tab content"}
 ```
 
-### Handling GUI Events
+#### Confirmation Dialog
+
+```lua
+-- Add callbacks to your remote interface
+remote.add_interface("my_mod", {
+    show_delete = function(player_index, entity_data)
+        remote.call("entity_gui_lib", "show_confirmation", player_index, {
+            mod_name = "my_mod",
+            title = "Confirm Delete",
+            message = "Are you sure you want to delete this?",
+            confirm_caption = "Delete",      -- optional, defaults to "Confirm"
+            cancel_caption = "Keep",         -- optional, defaults to "Cancel"
+            on_confirm = "do_delete",
+            on_cancel = "cancel_delete",     -- optional
+            data = entity_data,              -- passed to callbacks
+        })
+    end,
+
+    do_delete = function(player, data)
+        player.print("Deleted!")
+    end,
+
+    cancel_delete = function(player, data)
+        player.print("Cancelled")
+    end,
+})
+```
+
+### Debug Mode
+
+Enable debug logging to see registrations and GUI events in the Factorio log:
+
+```lua
+-- Enable debug mode
+remote.call("entity_gui_lib", "set_debug_mode", true)
+
+-- Check if debug mode is enabled
+local enabled = remote.call("entity_gui_lib", "is_debug_mode")
+```
+
+Log output appears in `factorio-current.log`:
+- Windows: `%APPDATA%\Factorio\factorio-current.log`
+- Linux: `~/.factorio/factorio-current.log`
+- macOS: `~/Library/Application Support/factorio/factorio-current.log`
+
+Example log output:
+```
+[entity-gui-lib] Registered: inserter by my_mod (priority: 0)
+[entity-gui-lib] Opened GUI for inserter (player: PlayerName, mod: my_mod)
+```
+
+## Handling GUI Events
 
 Handle button clicks and other GUI events in your mod:
 
