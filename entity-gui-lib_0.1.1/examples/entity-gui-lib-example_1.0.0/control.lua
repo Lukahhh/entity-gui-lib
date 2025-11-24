@@ -564,17 +564,17 @@ remote.add_interface("entity_gui_lib_example", {
     -- Roboport GUI builder - demonstrates recipe and item selectors
     build_roboport_gui = function(container, entity, player)
         local _, tabs = remote.call("entity_gui_lib", "create_tabs", container, {
-            {name = "items", caption = "Items"},
-            {name = "recipes", caption = "Recipes"},
+            {name = "item_picker", caption = "Items"},
+            {name = "recipe_picker", caption = "Recipes"},
         })
 
         -- Items tab - demonstrate item selector with filter
-        tabs.items.add{
+        tabs.item_picker.add{
             type = "label",
             caption = "Select an item (tools only):",
             style = "bold_label",
         }
-        remote.call("entity_gui_lib", "create_item_selector", tabs.items, {
+        remote.call("entity_gui_lib", "create_item_selector", tabs.item_picker, {
             filter = {{filter = "type", type = "tool"}},
             show_search = true,
             columns = 8,
@@ -584,12 +584,12 @@ remote.add_interface("entity_gui_lib_example", {
         })
 
         -- Recipes tab - demonstrate recipe selector
-        tabs.recipes.add{
+        tabs.recipe_picker.add{
             type = "label",
             caption = "Select a recipe:",
             style = "bold_label",
         }
-        remote.call("entity_gui_lib", "create_recipe_selector", tabs.recipes, {
+        remote.call("entity_gui_lib", "create_recipe_selector", tabs.recipe_picker, {
             player = player,
             show_search = true,
             columns = 8,
@@ -625,7 +625,13 @@ remote.add_interface("entity_gui_lib_example", {
 
     on_signal_select = function(player, signal_id, data)
         if signal_id then
-            player.print("Selected signal: " .. signal_id.type .. "/" .. signal_id.name)
+            if signal_id.type and signal_id.name then
+                player.print("Selected signal: " .. signal_id.type .. "/" .. signal_id.name)
+            elseif signal_id.name then
+                player.print("Selected signal: " .. signal_id.name)
+            else
+                player.print("Selected signal: " .. serpent.line(signal_id))
+            end
         else
             player.print("Cleared signal selection")
         end

@@ -631,7 +631,7 @@ script.on_event(defines.events.on_gui_value_changed, function(event)
             end
         end
 
-        -- Update swatch tooltip
+        -- Update swatch color and tooltip
         local swatch_name = callback_data.swatch_name
         if swatch_name and outer_flow then
             for _, child in pairs(outer_flow.children) do
@@ -641,6 +641,7 @@ script.on_event(defines.events.on_gui_value_changed, function(event)
                             local r = math.floor(color.r * 255)
                             local g = math.floor(color.g * 255)
                             local b = math.floor(color.b * 255)
+                            subchild.style.color = color
                             subchild.tooltip = {"", "RGB: ", r, ", ", g, ", ", b}
                             break
                         end
@@ -754,8 +755,8 @@ script.on_event(defines.events.on_gui_text_changed, function(event)
         for _, child in pairs(scroll_pane.children) do
             if child.valid then
                 local item_name = child.tags and child.tags.item_name or child.name:gsub(GUI_PREFIX .. "item_button_", "")
-                local visible = search_text == "" or string.find(string.lower(item_name), search_text, 1, true)
-                child.visible = visible
+                local matches = string.find(string.lower(item_name), search_text, 1, true)
+                child.visible = search_text == "" or matches ~= nil
             end
         end
         return
@@ -774,8 +775,8 @@ script.on_event(defines.events.on_gui_text_changed, function(event)
         for _, child in pairs(scroll_pane.children) do
             if child.valid then
                 local recipe_name = child.tags and child.tags.recipe_name or ""
-                local visible = search_text == "" or string.find(string.lower(recipe_name), search_text, 1, true)
-                child.visible = visible
+                local matches = string.find(string.lower(recipe_name), search_text, 1, true)
+                child.visible = search_text == "" or matches ~= nil
             end
         end
         return
@@ -1671,7 +1672,7 @@ remote.add_interface("entity_gui_lib", {
         }
         outer_flow.style.vertical_spacing = 4
 
-        -- Color preview swatch
+        -- Color preview swatch using progressbar (supports custom colors)
         local preview_flow = outer_flow.add{
             type = "flow",
             direction = "horizontal",
@@ -1686,23 +1687,20 @@ remote.add_interface("entity_gui_lib", {
 
         local swatch_name = GUI_PREFIX .. "color_swatch_" .. id
         local swatch = preview_flow.add{
-            type = "sprite-button",
+            type = "progressbar",
             name = swatch_name,
-            style = "slot_button",
+            value = 1,  -- Full bar to show solid color
         }
         swatch.style.width = 32
         swatch.style.height = 32
+        swatch.style.bar_width = 32
+        swatch.style.color = color
 
-        -- Helper to update swatch color
-        local function update_swatch()
-            -- Factorio doesn't support direct background color on sprite-buttons,
-            -- so we'll use a workaround with the tooltip showing the RGB values
-            local r = math.floor((color.r or 1) * 255)
-            local g = math.floor((color.g or 1) * 255)
-            local b = math.floor((color.b or 1) * 255)
-            swatch.tooltip = {"", "RGB: ", r, ", ", g, ", ", b}
-        end
-        update_swatch()
+        -- Set initial tooltip
+        local r = math.floor((color.r or 1) * 255)
+        local g = math.floor((color.g or 1) * 255)
+        local b = math.floor((color.b or 1) * 255)
+        swatch.tooltip = {"", "RGB: ", r, ", ", g, ", ", b}
 
         local callbacks = get_helper_callbacks()
         local sliders = {}
