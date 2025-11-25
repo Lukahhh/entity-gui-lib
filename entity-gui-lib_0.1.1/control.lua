@@ -959,11 +959,6 @@ script.on_event(defines.events.on_tick, function(event)
             remote.call(registration.mod_name, registration.on_update, content, entity, player)
         end
 
-        -- Restore tab selection if it was changed
-        if saved_tab_index and tabbed_pane and tabbed_pane.valid and tabbed_pane.selected_tab_index ~= saved_tab_index then
-            tabbed_pane.selected_tab_index = saved_tab_index
-        end
-
         -- Refresh player inventory panel if present
         if gui_data.player_inv_table and gui_data.player_inv_table.valid then
             -- Get the appropriate inventory based on source
@@ -997,6 +992,11 @@ script.on_event(defines.events.on_tick, function(event)
             if not is_player_inv and inv_data.inventory and inv_data.inventory.valid then
                 refresh_inventory_slots(inv_id)
             end
+        end
+
+        -- Restore tab selection AFTER all refreshes (some refreshes may cause tab to change)
+        if saved_tab_index and tabbed_pane and tabbed_pane.valid and tabbed_pane.selected_tab_index ~= saved_tab_index then
+            tabbed_pane.selected_tab_index = saved_tab_index
         end
 
         ::continue::
