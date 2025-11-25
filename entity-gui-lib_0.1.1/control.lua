@@ -451,6 +451,60 @@ local function get_next_helper_id()
     return helper_id_counter
 end
 
+-- Helper to refresh all inventory slot visuals for a given inventory
+local function refresh_inventory_slots(inv_id)
+    local inv_refs = storage.inventory_refs or {}
+    local inv_data = inv_refs[inv_id]
+    if not inv_data or not inv_data.inventory or not inv_data.inventory.valid then
+        return
+    end
+
+    local inventory = inv_data.inventory
+    local callbacks = get_helper_callbacks()
+
+    -- Find and update all slots for this inventory
+    for slot_name, callback_data in pairs(callbacks) do
+        if callback_data.inventory_id == inv_id and slot_name:find("^" .. GUI_PREFIX .. "inv_slot_") then
+            local slot_index = callback_data.slot_index
+            local stack = inventory[slot_index]
+
+            -- Find the GUI element - need to search through all players' GUIs
+            for player_index, gui_data in pairs(open_guis) do
+                local player = game.get_player(player_index)
+                if player then
+                    local frame = player.gui.screen[FRAME_NAME]
+                    if frame and frame.valid then
+                        -- Search for the element recursively
+                        local function find_element(parent, name)
+                            if parent.name == name then return parent end
+                            for _, child in pairs(parent.children or {}) do
+                                local found = find_element(child, name)
+                                if found then return found end
+                            end
+                            return nil
+                        end
+
+                        local element = find_element(frame, slot_name)
+                        if element and element.valid then
+                            if stack and stack.valid_for_read then
+                                element.sprite = "item/" .. stack.name
+                                element.number = stack.count
+                                element.tooltip = stack.prototype.localised_name
+                                callback_data.item_stack = {name = stack.name, count = stack.count}
+                            else
+                                element.sprite = nil
+                                element.number = nil
+                                element.tooltip = nil
+                                callback_data.item_stack = nil
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
 script.on_event(defines.events.on_gui_click, function(event)
     local element = event.element
     if not element or not element.valid then
@@ -556,9 +610,85 @@ script.on_event(defines.events.on_gui_click, function(event)
                 local inv_slot = inventory[slot_index]
 
                 local transfer_occurred = false
-                local transfer_type = nil  -- "insert", "take", "swap"
+                local transfer_type = nil  -- "insert", "take", "swap", "quick_transfer"
 
-                if cursor and cursor.valid_for_read then
+                -- Handle shift-click quick transfer
+                if event.shift and inv_slot and inv_slot.valid_for_read then
+                    local gui_data = open_guis[player.index]
+                    if gui_data then
+                        -- Determine target inventory (the "other" one)
+                        local target_inv = nil
+                        local target_inv_id = nil
+                        local is_player_inv = inv_id:find("^player_")
+
+                        if is_player_inv then
+                            -- Source is player inventory, find entity inventories
+                            for other_inv_id, other_inv_data in pairs(inv_refs) do
+                                if not other_inv_id:find("^player_") and other_inv_data.inventory and other_inv_data.inventory.valid then
+                                    target_inv = other_inv_data.inventory
+                                    target_inv_id = other_inv_id
+                                    break
+                                end
+                            end
+                        else
+                            -- Source is entity inventory, target is player inventory
+                            local player_inv_id = "player_" .. player.index
+                            local player_inv_data = inv_refs[player_inv_id]
+                            if player_inv_data and player_inv_data.inventory and player_inv_data.inventory.valid then
+                                target_inv = player_inv_data.inventory
+                                target_inv_id = player_inv_id
+                            end
+                        end
+
+                        if target_inv then
+                            local item_name = inv_slot.name
+                            local item_count = inv_slot.count
+                            local remaining = item_count
+
+                            -- First pass: try to stack with existing items of same type
+                            for i = 1, #target_inv do
+                                if remaining <= 0 then break end
+                                local target_slot = target_inv[i]
+                                if target_slot and target_slot.valid_for_read and target_slot.name == item_name then
+                                    local can_add = target_slot.prototype.stack_size - target_slot.count
+                                    if can_add > 0 then
+                                        local to_add = math.min(can_add, remaining)
+                                        target_slot.count = target_slot.count + to_add
+                                        remaining = remaining - to_add
+                                    end
+                                end
+                            end
+
+                            -- Second pass: try empty slots
+                            for i = 1, #target_inv do
+                                if remaining <= 0 then break end
+                                local target_slot = target_inv[i]
+                                if not target_slot or not target_slot.valid_for_read then
+                                    local to_add = math.min(prototypes.item[item_name].stack_size, remaining)
+                                    target_inv[i].set_stack{name = item_name, count = to_add}
+                                    remaining = remaining - to_add
+                                end
+                            end
+
+                            -- Update source slot
+                            if remaining < item_count then
+                                if remaining > 0 then
+                                    inv_slot.count = remaining
+                                else
+                                    inv_slot.clear()
+                                end
+                                transfer_occurred = true
+                                transfer_type = "quick_transfer"
+
+                                -- Immediately refresh both inventory displays
+                                refresh_inventory_slots(inv_id)
+                                if target_inv_id then
+                                    refresh_inventory_slots(target_inv_id)
+                                end
+                            end
+                        end
+                    end
+                elseif not event.shift and cursor and cursor.valid_for_read then
                     -- Player has item on cursor
                     local item_name = cursor.name
                     local item_count = cursor.count
@@ -603,8 +733,8 @@ script.on_event(defines.events.on_gui_click, function(event)
                             transfer_type = "insert"
                         end
                     end
-                else
-                    -- Player has empty cursor - take items from slot
+                elseif not event.shift then
+                    -- Player has empty cursor - take items from slot (only if not shift-clicking)
                     if inv_slot and inv_slot.valid_for_read then
                         local item_name = inv_slot.name
                         local item_count = inv_slot.count
@@ -640,6 +770,12 @@ script.on_event(defines.events.on_gui_click, function(event)
                         element.number = nil
                         element.tooltip = nil
                         callback_data.item_stack = nil
+                    end
+
+                    -- Mark interaction time to prevent refresh interference
+                    local gui_data = open_guis[player.index]
+                    if gui_data then
+                        gui_data.last_interaction_tick = game.tick
                     end
 
                     -- Call on_transfer callback if configured
@@ -722,6 +858,8 @@ script.on_event(defines.events.on_robot_mined_entity, close_invalid_guis)
 script.on_event(defines.events.on_entity_died, close_invalid_guis)
 
 -- Handle periodic updates for open GUIs
+local INTERACTION_COOLDOWN = 30  -- Ticks to wait after interaction before refreshing (~0.5 seconds)
+
 script.on_event(defines.events.on_tick, function(event)
     for player_index, gui_data in pairs(open_guis) do
         local registration = gui_data.registration
@@ -729,6 +867,11 @@ script.on_event(defines.events.on_tick, function(event)
         -- Check if enough ticks have passed
         local interval = registration.update_interval or 10
         if event.tick - gui_data.last_update_tick < interval then
+            goto continue
+        end
+
+        -- Skip refresh if player recently interacted (prevents visual glitches and tab switching)
+        if gui_data.last_interaction_tick and (event.tick - gui_data.last_interaction_tick) < INTERACTION_COOLDOWN then
             goto continue
         end
 
@@ -762,10 +905,19 @@ script.on_event(defines.events.on_tick, function(event)
             goto continue
         end
 
+        -- Save tab selection before any updates
+        local tabbed_pane = content[GUI_PREFIX .. "tabbed_pane"]
+        local saved_tab_index = tabbed_pane and tabbed_pane.selected_tab_index or nil
+
         -- Call update callback if configured
         local entity = gui_data.entity
         if registration.on_update and entity and entity.valid and registration.mod_name then
             remote.call(registration.mod_name, registration.on_update, content, entity, player)
+        end
+
+        -- Restore tab selection if it was changed
+        if saved_tab_index and tabbed_pane and tabbed_pane.valid and tabbed_pane.selected_tab_index ~= saved_tab_index then
+            tabbed_pane.selected_tab_index = saved_tab_index
         end
 
         -- Refresh player inventory panel if present
