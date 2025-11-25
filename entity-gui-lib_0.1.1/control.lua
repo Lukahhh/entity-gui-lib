@@ -416,6 +416,114 @@ script.on_event(defines.events.on_gui_click, function(event)
         local callback_data = callbacks[element.name]
         if not callback_data then return end
 
+        -- Handle interactive inventory transfers
+        if callback_data.interactive then
+            local inv_id = callback_data.inventory_id
+            local inv_refs = storage.inventory_refs or {}
+            local inv_data = inv_refs[inv_id]
+
+            if inv_data and inv_data.inventory and inv_data.inventory.valid then
+                local inventory = inv_data.inventory
+                local slot_index = callback_data.slot_index
+                local cursor = player.cursor_stack
+                local inv_slot = inventory[slot_index]
+
+                local transfer_occurred = false
+                local transfer_type = nil  -- "insert", "take", "swap"
+
+                if cursor and cursor.valid_for_read then
+                    -- Player has item on cursor
+                    local item_name = cursor.name
+                    local item_count = cursor.count
+
+                    -- Check item filter if configured
+                    local allowed = true
+                    if inv_data.item_filter then
+                        allowed = inv_data.item_filter[item_name] == true
+                    end
+
+                    if allowed then
+                        if inv_slot and inv_slot.valid_for_read then
+                            -- Slot has items
+                            if inv_slot.name == item_name then
+                                -- Same item type - try to stack
+                                local can_insert = inv_slot.prototype.stack_size - inv_slot.count
+                                if can_insert > 0 then
+                                    local to_insert = math.min(can_insert, item_count)
+                                    inv_slot.count = inv_slot.count + to_insert
+                                    if to_insert >= item_count then
+                                        cursor.clear()
+                                    else
+                                        cursor.count = item_count - to_insert
+                                    end
+                                    transfer_occurred = true
+                                    transfer_type = "insert"
+                                end
+                            else
+                                -- Different item type - swap
+                                local old_name = inv_slot.name
+                                local old_count = inv_slot.count
+                                inv_slot.set_stack{name = item_name, count = item_count}
+                                cursor.set_stack{name = old_name, count = old_count}
+                                transfer_occurred = true
+                                transfer_type = "swap"
+                            end
+                        else
+                            -- Empty slot - insert cursor items
+                            inv_slot.set_stack{name = item_name, count = item_count}
+                            cursor.clear()
+                            transfer_occurred = true
+                            transfer_type = "insert"
+                        end
+                    end
+                else
+                    -- Player has empty cursor - take items from slot
+                    if inv_slot and inv_slot.valid_for_read then
+                        local item_name = inv_slot.name
+                        local item_count = inv_slot.count
+
+                        -- Right-click takes half
+                        if event.button == defines.mouse_button_type.right then
+                            local take_count = math.ceil(item_count / 2)
+                            cursor.set_stack{name = item_name, count = take_count}
+                            if take_count >= item_count then
+                                inv_slot.clear()
+                            else
+                                inv_slot.count = item_count - take_count
+                            end
+                        else
+                            -- Left-click takes all
+                            cursor.set_stack{name = item_name, count = item_count}
+                            inv_slot.clear()
+                        end
+                        transfer_occurred = true
+                        transfer_type = "take"
+                    end
+                end
+
+                -- Update the button visual
+                if transfer_occurred then
+                    if inv_slot and inv_slot.valid_for_read then
+                        element.sprite = "item/" .. inv_slot.name
+                        element.number = inv_slot.count
+                        element.tooltip = inv_slot.prototype.localised_name
+                        callback_data.item_stack = {name = inv_slot.name, count = inv_slot.count}
+                    else
+                        element.sprite = nil
+                        element.number = nil
+                        element.tooltip = nil
+                        callback_data.item_stack = nil
+                    end
+
+                    -- Call on_transfer callback if configured
+                    if inv_data.mod_name and inv_data.on_transfer then
+                        remote.call(inv_data.mod_name, inv_data.on_transfer, player, slot_index, transfer_type, inv_data.data)
+                    end
+                end
+            end
+        end
+
+        -- Always call on_click callback if configured (for custom handling)
         if callback_data.mod_name and callback_data.on_click then
             local slot_index = callback_data.slot_index
             local item_stack = callback_data.item_stack
@@ -554,6 +662,7 @@ end)
 script.on_init(function()
     storage.open_guis = open_guis
     storage.helper_callbacks = {}
+    storage.inventory_refs = {}
 end)
 
 script.on_load(function()
@@ -986,6 +1095,45 @@ remote.add_interface("entity_gui_lib", {
         end
     end,
 
+    ---Refresh/update all slots in an inventory display table element
+    ---@param inv_table LuaGuiElement The table element returned from create_inventory_display
+    ---@param inventory LuaInventory The inventory to refresh from
+    ---@return boolean success
+    refresh_inventory_display = function(inv_table, inventory)
+        if not inv_table or not inv_table.valid then
+            return false
+        end
+        if not inventory or not inventory.valid then
+            return false
+        end
+
+        local callbacks = get_helper_callbacks()
+
+        for i, child in pairs(inv_table.children) do
+            if child.valid and child.name:find("^" .. GUI_PREFIX .. "inv_slot_") then
+                local callback_data = callbacks[child.name]
+                if callback_data then
+                    local slot_index = callback_data.slot_index
+                    local stack = inventory[slot_index]
+
+                    if stack and stack.valid_for_read then
+                        child.sprite = "item/" .. stack.name
+                        child.number = stack.count
+                        child.tooltip = stack.prototype.localised_name
+                        callback_data.item_stack = {name = stack.name, count = stack.count}
+                    else
+                        child.sprite = nil
+                        child.number = nil
+                        child.tooltip = nil
+                        callback_data.item_stack = nil
+                    end
+                end
+            end
+        end
+
+        return true
+    end,
+
     ---Create a tabbed pane helper
     ---@param container LuaGuiElement Parent container to add tabs to
     ---@param tabs table[] Array of {name: string, caption: LocalisedString}
@@ -1330,7 +1478,7 @@ remote.add_interface("entity_gui_lib", {
 
     ---Create an inventory display with slot buttons
     ---@param container LuaGuiElement Parent container
-    ---@param config table {inventory: LuaInventory, columns?: number, read_only?: boolean, show_empty?: boolean, mod_name?: string, on_click?: string, data?: any}
+    ---@param config table {inventory: LuaInventory, columns?: number, read_only?: boolean, show_empty?: boolean, interactive?: boolean, item_filter?: table<string, boolean>, mod_name?: string, on_click?: string, on_transfer?: string, data?: any}
     ---@return LuaGuiElement scroll_pane, LuaGuiElement table
     create_inventory_display = function(container, config)
         local id = get_next_helper_id()
@@ -1341,6 +1489,8 @@ remote.add_interface("entity_gui_lib", {
 
         local columns = config.columns or 10
         local show_empty = config.show_empty ~= false
+        local interactive = config.interactive or false
+        local read_only = config.read_only or false
 
         local scroll_pane = container.add{
             type = "scroll-pane",
@@ -1360,6 +1510,19 @@ remote.add_interface("entity_gui_lib", {
 
         local callbacks = get_helper_callbacks()
 
+        -- Store inventory reference for interactive mode
+        local inv_data_key = GUI_PREFIX .. "inv_data_" .. id
+        if interactive and not read_only then
+            storage.inventory_refs = storage.inventory_refs or {}
+            storage.inventory_refs[id] = {
+                inventory = inventory,
+                item_filter = config.item_filter,
+                mod_name = config.mod_name,
+                on_transfer = config.on_transfer,
+                data = config.data,
+            }
+        end
+
         for i = 1, #inventory do
             local stack = inventory[i]
             local slot_name = GUI_PREFIX .. "inv_slot_" .. id .. "_" .. i
@@ -1374,20 +1537,30 @@ remote.add_interface("entity_gui_lib", {
                     style = "slot_button",
                 }
 
-                if config.mod_name and config.on_click then
-                    callbacks[slot_name] = {
-                        mod_name = config.mod_name,
-                        on_click = config.on_click,
-                        slot_index = i,
-                        item_stack = {name = stack.name, count = stack.count},
-                        data = config.data,
-                    }
-                end
+                callbacks[slot_name] = {
+                    mod_name = config.mod_name,
+                    on_click = config.on_click,
+                    slot_index = i,
+                    item_stack = {name = stack.name, count = stack.count},
+                    data = config.data,
+                    interactive = interactive and not read_only,
+                    inventory_id = id,
+                }
             elseif show_empty then
-                inv_table.add{
+                local button = inv_table.add{
                     type = "sprite-button",
                     name = slot_name,
                     style = "slot_button",
+                }
+
+                callbacks[slot_name] = {
+                    mod_name = config.mod_name,
+                    on_click = config.on_click,
+                    slot_index = i,
+                    item_stack = nil,
+                    data = config.data,
+                    interactive = interactive and not read_only,
+                    inventory_id = id,
                 }
             end
         end
