@@ -778,6 +778,10 @@ script.on_event(defines.events.on_gui_click, function(event)
 
                 -- Handle shift-click quick transfer
                 if event.shift and inv_slot and inv_slot.valid_for_read then
+                    if debug_mode then
+                        log("[entity-gui-lib] Shift-click detected on slot with item: " .. inv_slot.name .. " x" .. inv_slot.count)
+                        log("[entity-gui-lib] Source inv_id: " .. tostring(inv_id) .. " (type: " .. type(inv_id) .. ")")
+                    end
                     local gui_data = open_guis[player.index]
                     if gui_data then
                         -- Determine target inventory (the "other" one)
@@ -787,12 +791,21 @@ script.on_event(defines.events.on_gui_click, function(event)
 
                         if is_player_inv then
                             -- Source is player inventory, find entity inventories
+                            if debug_mode then
+                                log("[entity-gui-lib] Source is player inventory, searching for entity inventories...")
+                                for debug_inv_id, debug_inv_data in pairs(inv_refs) do
+                                    log("[entity-gui-lib]   Found inv_ref: " .. tostring(debug_inv_id) .. " (type: " .. type(debug_inv_id) .. ") valid: " .. tostring(debug_inv_data.inventory and debug_inv_data.inventory.valid))
+                                end
+                            end
                             for other_inv_id, other_inv_data in pairs(inv_refs) do
                                 -- Entity inventory IDs are numbers, player inventory IDs are strings starting with "player_"
                                 local is_other_player_inv = type(other_inv_id) == "string" and other_inv_id:find("^player_")
                                 if not is_other_player_inv and other_inv_data.inventory and other_inv_data.inventory.valid then
                                     target_inv = other_inv_data.inventory
                                     target_inv_id = other_inv_id
+                                    if debug_mode then
+                                        log("[entity-gui-lib] Selected target_inv_id: " .. tostring(target_inv_id))
+                                    end
                                     break
                                 end
                             end
@@ -855,17 +868,14 @@ script.on_event(defines.events.on_gui_click, function(event)
                                     refresh_inventory_slots(target_inv_id)
                                 end
 
-                                -- For shift-click from player to entity, trigger the GUI's on_update callback
-                                -- This refreshes all custom content (including "Have" columns, progress bars, etc.)
+                                -- For shift-click from player to entity, trigger full GUI refresh
+                                -- This rebuilds the content via on_build, ensuring "Have" columns etc. are updated
                                 if is_player_inv then
-                                    local registration = gui_data.registration
-                                    if registration and registration.mod_name and registration.on_update then
-                                        local entity = gui_data.entity
-                                        local content = gui_data.content
-                                        if entity and entity.valid and content and content.valid then
-                                            remote.call(registration.mod_name, registration.on_update, content, entity, player)
-                                        end
+                                    if debug_mode then
+                                        log("[entity-gui-lib] Triggering GUI refresh after player->entity shift-click")
                                     end
+                                    -- Use the refresh remote function to rebuild content
+                                    remote.call("entity_gui_lib", "refresh", player.index)
                                 end
                             end
                         end
