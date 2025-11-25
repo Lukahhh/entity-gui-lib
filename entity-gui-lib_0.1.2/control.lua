@@ -854,6 +854,19 @@ script.on_event(defines.events.on_gui_click, function(event)
                                 if target_inv_id then
                                     refresh_inventory_slots(target_inv_id)
                                 end
+
+                                -- For shift-click from player to entity, trigger the GUI's on_update callback
+                                -- This refreshes all custom content (including "Have" columns, progress bars, etc.)
+                                if is_player_inv then
+                                    local registration = gui_data.registration
+                                    if registration and registration.mod_name and registration.on_update then
+                                        local entity = gui_data.entity
+                                        local content = gui_data.content
+                                        if entity and entity.valid and content and content.valid then
+                                            remote.call(registration.mod_name, registration.on_update, content, entity, player)
+                                        end
+                                    end
+                                end
                             end
                         end
                     end
