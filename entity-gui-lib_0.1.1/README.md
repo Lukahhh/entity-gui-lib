@@ -104,6 +104,7 @@ script.on_load(register_guis)
 | `update_interval` | number | No | Ticks between updates (default: 10, ~6 times/sec) |
 | `priority` | number | No | Priority for conflict resolution (default: 0, higher wins) |
 | `preview_size` | number | No | Size of entity preview in pixels (default: 148) |
+| `show_player_inventory` | boolean | No | Show player's inventory panel alongside entity GUI (default: false) |
 
 ### Callback Signatures
 
@@ -212,6 +213,11 @@ local success = remote.call("entity_gui_lib", "refresh", player_index)
 
 -- Close a player's GUI programmatically
 remote.call("entity_gui_lib", "close", player_index)
+
+-- Refresh an inventory display's slots without rebuilding the GUI
+-- inv_table: the table element returned by create_inventory_display
+-- inventory: the LuaInventory to refresh from
+local success = remote.call("entity_gui_lib", "refresh_inventory_display", inv_table, inventory)
 ```
 
 ### Helper Functions
@@ -329,6 +335,7 @@ remote.call("entity_gui_lib", "create_toggle_group", container, {
         {caption = "Filter", value = "filter", state = false},
         {caption = "Limit", value = "limit", state = false, tooltip = "Limit stack size"},
     },
+    horizontal = false,         -- optional, vertical layout (default: false)
     mod_name = "my_mod",
     on_change = "on_feature_toggle",
 })
@@ -336,7 +343,8 @@ remote.call("entity_gui_lib", "create_toggle_group", container, {
 -- Radio buttons (single selection with mutual exclusion)
 remote.call("entity_gui_lib", "create_toggle_group", container, {
     label = "Priority",
-    mutual_exclusion = true,  -- makes it behave like radio buttons
+    mutual_exclusion = true,    -- makes it behave like radio buttons
+    use_radiobuttons = true,    -- optional, use radiobutton style instead of checkbox
     options = {
         {caption = "Low", value = "low"},
         {caption = "Normal", value = "normal", state = true},
@@ -374,6 +382,33 @@ remote.add_interface("my_mod", {
     end,
 })
 ```
+
+**Interactive Inventory** - Enable item transfers between player and entity:
+
+```lua
+remote.call("entity_gui_lib", "create_inventory_display", container, {
+    inventory = inventory,
+    interactive = true,         -- enable item transfers
+    read_only = false,          -- optional, prevent transfers even when interactive
+    item_filter = {             -- optional, restrict allowed items
+        ["iron-plate"] = true,
+        ["copper-plate"] = true,
+    },
+    mod_name = "my_mod",
+    on_transfer = "on_item_transfer",
+    data = {entity_id = entity.unit_number},
+})
+
+-- on_transfer callback signature: function(player, slot_index, transfer_type, data)
+-- transfer_type: "insert", "take", "swap", or "quick_transfer"
+```
+
+**Interactive behavior:**
+- Left-click with items in cursor: Insert full stack
+- Right-click with items in cursor: Insert half stack
+- Left-click with empty cursor: Take all items from slot
+- Right-click with empty cursor: Take half of items from slot
+- Shift-click: Quick transfer items to/from player inventory
 
 #### Recipe Selector
 
