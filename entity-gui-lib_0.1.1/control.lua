@@ -619,12 +619,14 @@ script.on_event(defines.events.on_gui_click, function(event)
                         -- Determine target inventory (the "other" one)
                         local target_inv = nil
                         local target_inv_id = nil
-                        local is_player_inv = inv_id:find("^player_")
+                        local is_player_inv = type(inv_id) == "string" and inv_id:find("^player_")
 
                         if is_player_inv then
                             -- Source is player inventory, find entity inventories
                             for other_inv_id, other_inv_data in pairs(inv_refs) do
-                                if not other_inv_id:find("^player_") and other_inv_data.inventory and other_inv_data.inventory.valid then
+                                -- Entity inventory IDs are numbers, player inventory IDs are strings starting with "player_"
+                                local is_other_player_inv = type(other_inv_id) == "string" and other_inv_id:find("^player_")
+                                if not is_other_player_inv and other_inv_data.inventory and other_inv_data.inventory.valid then
                                     target_inv = other_inv_data.inventory
                                     target_inv_id = other_inv_id
                                     break
@@ -679,6 +681,9 @@ script.on_event(defines.events.on_gui_click, function(event)
                                 end
                                 transfer_occurred = true
                                 transfer_type = "quick_transfer"
+
+                                -- Mark interaction time BEFORE refresh to prevent on_tick interference
+                                gui_data.last_interaction_tick = game.tick
 
                                 -- Immediately refresh both inventory displays
                                 refresh_inventory_slots(inv_id)
