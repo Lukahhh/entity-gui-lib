@@ -1,4 +1,52 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.1.2
+Date: 2025-11-25
+  Features:
+    - Interactive inventory support for create_inventory_display
+      - interactive (boolean) - Enable click-to-transfer items with player cursor
+      - read_only (boolean) - Disable transfers even if interactive is true
+      - item_filter (table) - Optional whitelist of allowed items
+      - on_transfer (string) - Remote callback triggered after item transfers
+    - Player inventory panel via show_player_inventory registration option
+      - Displays scrollable player inventory alongside custom entity GUIs
+      - Fully interactive - click to pick up/place items
+      - Works in both normal mode and editor/god mode
+    - Shift-click quick transfer between inventories
+      - From player inventory to entity inventory and vice versa
+      - Stacks with existing items first, then uses empty slots
+    - New remote function: refresh_inventory_display(inv_table, inventory)
+      - Manually refresh inventory slot visuals without rebuilding GUI
+  Interaction Behaviors:
+    - Left-click empty slot with cursor item: Insert all items
+    - Left-click filled slot with same item: Stack items (respects stack size)
+    - Left-click filled slot with different item: Swap items
+    - Left-click filled slot with empty cursor: Take all items
+    - Right-click filled slot with empty cursor: Take half stack
+    - Shift + left-click filled slot: Quick transfer to other inventory
+  Bugfixes:
+    - Fixed tab selection being reset during periodic refresh
+    - Fixed function definition order issue with get_helper_callbacks
+    - Fixed GUI element hierarchy navigation after adding main_flow wrapper
+    - Fixed editor/god mode inventory support
+    - Fixed numeric inventory ID type checking errors
+    - Fixed sprite/tooltip clearing using empty string instead of nil
+  Optimizations:
+    - Cache UI element references in gui_data (eliminates GUI hierarchy traversal in on_tick)
+    - Inventory hash check to skip refresh when contents unchanged
+    - Direct inventory table references (eliminates recursive DOM traversal)
+    - Early exit in all event handlers using fast prefix check
+    - Cache color picker element references (eliminates DOM traversal on slider changes)
+    - Static status lookup table built once at module level
+    - Debounced item/recipe search (6 tick delay for smoother typing)
+  Internal:
+    - Added storage.inventory_refs for tracking interactive inventory references
+    - Added storage.inventory_tables for direct table element access
+    - Added storage.pending_searches for debounced search queue
+    - Added INTERACTION_COOLDOWN (30 ticks) to prevent visual glitches during rapid clicking
+    - Tab selection preservation during all refresh operations
+
+
+---------------------------------------------------------------------------------------------------
 Version: 0.1.1
 Date: 2025-11-25
   Features:
