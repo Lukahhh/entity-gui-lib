@@ -442,6 +442,43 @@ script.on_event(defines.events.on_gui_opened, function(event)
     if debug_mode then
         log("[entity-gui-lib] Opened GUI for " .. entity.name .. " (player: " .. player.name .. ", mod: " .. registration.mod_name .. ")")
     end
+
+    -- Call listener on_open callbacks (for cross-mod integration)
+    local gui_data = open_guis[player.index]
+    if gui_data then
+        local content = gui_data.content
+        storage.listeners = storage.listeners or {}
+
+        -- Check listeners for entity name
+        local name_listeners = storage.listeners[entity.name]
+        if name_listeners then
+            for _, listener in ipairs(name_listeners) do
+                if listener.on_open then
+                    local ok, err = pcall(function()
+                        remote.call(listener.mod_name, listener.on_open, content, entity, player, registration.mod_name)
+                    end)
+                    if not ok and debug_mode then
+                        log("[entity-gui-lib] Listener on_open error (" .. listener.mod_name .. "): " .. tostring(err))
+                    end
+                end
+            end
+        end
+
+        -- Check listeners for entity type
+        local type_listeners = storage.listeners[entity.type]
+        if type_listeners then
+            for _, listener in ipairs(type_listeners) do
+                if listener.on_open and listener.is_entity_type then
+                    local ok, err = pcall(function()
+                        remote.call(listener.mod_name, listener.on_open, content, entity, player, registration.mod_name)
+                    end)
+                    if not ok and debug_mode then
+                        log("[entity-gui-lib] Listener on_open error (" .. listener.mod_name .. "): " .. tostring(err))
+                    end
+                end
+            end
+        end
+    end
 end)
 
 script.on_event(defines.events.on_gui_closed, function(event)
@@ -468,6 +505,50 @@ script.on_event(defines.events.on_gui_closed, function(event)
     local gui_data = open_guis[player.index]
     if gui_data and gui_data.registration.mod_name and gui_data.registration.on_close then
         remote.call(gui_data.registration.mod_name, gui_data.registration.on_close, gui_data.entity, player)
+    end
+
+    -- Call listener on_close callbacks (for cross-mod integration)
+    if gui_data then
+        local entity = gui_data.entity
+        local registration = gui_data.registration
+        storage.listeners = storage.listeners or {}
+
+        -- Check listeners for entity name (entity may be invalid if destroyed)
+        local entity_name = entity and entity.valid and entity.name
+        local entity_type = entity and entity.valid and entity.type
+
+        if entity_name then
+            local name_listeners = storage.listeners[entity_name]
+            if name_listeners then
+                for _, listener in ipairs(name_listeners) do
+                    if listener.on_close then
+                        local ok, err = pcall(function()
+                            remote.call(listener.mod_name, listener.on_close, entity, player, registration.mod_name)
+                        end)
+                        if not ok and debug_mode then
+                            log("[entity-gui-lib] Listener on_close error (" .. listener.mod_name .. "): " .. tostring(err))
+                        end
+                    end
+                end
+            end
+        end
+
+        -- Check listeners for entity type
+        if entity_type then
+            local type_listeners = storage.listeners[entity_type]
+            if type_listeners then
+                for _, listener in ipairs(type_listeners) do
+                    if listener.on_close and listener.is_entity_type then
+                        local ok, err = pcall(function()
+                            remote.call(listener.mod_name, listener.on_close, entity, player, registration.mod_name)
+                        end)
+                        if not ok and debug_mode then
+                            log("[entity-gui-lib] Listener on_close error (" .. listener.mod_name .. "): " .. tostring(err))
+                        end
+                    end
+                end
+            end
+        end
     end
 
     -- Clean up player inventory ref for this player
@@ -1110,6 +1191,7 @@ script.on_init(function()
     storage.inventory_refs = {}
     storage.inventory_tables = {}  -- Direct references to inventory table elements for fast refresh
     storage.pending_searches = {}  -- Debounced search queue for item/recipe selectors
+    storage.listeners = {}  -- GUI event listeners for cross-mod integration
 end)
 
 script.on_load(function()
@@ -1439,6 +1521,102 @@ remote.add_interface("entity_gui_lib", {
             }
         end
         table.sort(result, function(a, b) return a.priority > b.priority end)
+        return result
+    end,
+
+    ---Register as a listener for GUI open/close events (cross-mod integration)
+    ---Listeners are called AFTER the registering mod's callbacks
+    ---@param config table {mod_name: string, entity_name?: string, entity_type?: string, on_open?: string, on_close?: string}
+    add_listener = function(config)
+        if not config then
+            error("entity_gui_lib.add_listener: config is required")
+        end
+
+        if not config.mod_name then
+            error("entity_gui_lib.add_listener: mod_name is required")
+        end
+
+        if not config.entity_name and not config.entity_type then
+            error("entity_gui_lib.add_listener: entity_name or entity_type is required")
+        end
+
+        if not config.on_open and not config.on_close then
+            error("entity_gui_lib.add_listener: at least one of on_open or on_close is required")
+        end
+
+        local key = config.entity_name or config.entity_type
+
+        -- Initialize listeners storage if needed
+        storage.listeners = storage.listeners or {}
+        if not storage.listeners[key] then
+            storage.listeners[key] = {}
+        end
+
+        -- Remove existing listener from same mod (update scenario)
+        local listeners = storage.listeners[key]
+        for i = #listeners, 1, -1 do
+            if listeners[i].mod_name == config.mod_name then
+                table.remove(listeners, i)
+            end
+        end
+
+        -- Add new listener
+        local listener = {
+            mod_name = config.mod_name,
+            on_open = config.on_open,
+            on_close = config.on_close,
+            is_entity_type = config.entity_type ~= nil,
+        }
+        table.insert(listeners, listener)
+
+        if debug_mode then
+            log("[entity-gui-lib] Added listener: " .. key .. " by " .. config.mod_name)
+        end
+    end,
+
+    ---Remove a listener registration
+    ---@param entity_name_or_type string
+    ---@param mod_name string
+    remove_listener = function(entity_name_or_type, mod_name)
+        storage.listeners = storage.listeners or {}
+        local listeners = storage.listeners[entity_name_or_type]
+        if not listeners then
+            return
+        end
+
+        for i = #listeners, 1, -1 do
+            if listeners[i].mod_name == mod_name then
+                table.remove(listeners, i)
+                if debug_mode then
+                    log("[entity-gui-lib] Removed listener: " .. entity_name_or_type .. " by " .. mod_name)
+                end
+            end
+        end
+
+        -- Clean up empty tables
+        if #listeners == 0 then
+            storage.listeners[entity_name_or_type] = nil
+        end
+    end,
+
+    ---Get all listeners for an entity
+    ---@param entity_name_or_type string
+    ---@return table[] Array of listener info {mod_name: string, has_on_open: boolean, has_on_close: boolean}
+    get_listeners = function(entity_name_or_type)
+        storage.listeners = storage.listeners or {}
+        local listeners = storage.listeners[entity_name_or_type]
+        if not listeners then
+            return {}
+        end
+
+        local result = {}
+        for _, listener in ipairs(listeners) do
+            table.insert(result, {
+                mod_name = listener.mod_name,
+                has_on_open = listener.on_open ~= nil,
+                has_on_close = listener.on_close ~= nil,
+            })
+        end
         return result
     end,
 

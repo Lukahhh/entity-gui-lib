@@ -220,6 +220,42 @@ remote.call("entity_gui_lib", "close", player_index)
 local success = remote.call("entity_gui_lib", "refresh_inventory_display", inv_table, inventory)
 ```
 
+### Listener Functions (Cross-Mod Integration)
+
+Listen for GUI open/close events on entities registered by other mods:
+
+```lua
+-- Register as a listener for entity GUIs
+remote.call("entity_gui_lib", "add_listener", {
+    mod_name = "my_observer_mod",
+    entity_type = "inserter",       -- or entity_name = "specific-entity"
+    on_open = "my_open_callback",   -- optional
+    on_close = "my_close_callback", -- optional
+})
+
+-- Remove a listener
+remote.call("entity_gui_lib", "remove_listener", "inserter", "my_observer_mod")
+
+-- Get all listeners for an entity
+local listeners = remote.call("entity_gui_lib", "get_listeners", "inserter")
+```
+
+**Listener Callback Signatures:**
+
+```lua
+-- on_open: Called after the registering mod's on_build callback
+function(content, entity, player, registering_mod_name)
+
+-- on_close: Called after the registering mod's on_close callback
+function(entity, player, registering_mod_name)
+```
+
+**Use Cases:**
+- Cross-mod integration (react when another mod's GUI opens)
+- Overlay/addon mods that enhance other mods' GUIs
+- Logging or analytics
+- Adding indicators or tooltips to third-party entity GUIs
+
 ### Helper Functions
 
 #### Tabbed Interface

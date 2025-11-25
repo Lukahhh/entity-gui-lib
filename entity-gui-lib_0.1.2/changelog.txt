@@ -1,4 +1,26 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.1.3
+Date: 2025-11-25
+  Features:
+    - GUI Event Listener System for cross-mod integration
+      - add_listener(config) - Register callbacks for entity GUI open/close events
+      - remove_listener(entity_name_or_type, mod_name) - Unregister a listener
+      - get_listeners(entity_name_or_type) - Query registered listeners
+    - Listeners can observe GUIs from other mods without modifying them
+    - Support for both entity_name and entity_type filtering
+    - Listener callbacks receive: content frame, entity, player, registering mod name
+  Use Cases:
+    - Cross-mod integration (Mod B reacts when Mod A's GUI opens)
+    - Overlay/addon mods that enhance other mods' GUIs
+    - Logging/analytics mods
+    - Adding tooltips or indicators to third-party entity GUIs
+  Internal:
+    - Added storage.listeners for tracking listener registrations
+    - Listeners called after registering mod's on_build/on_close callbacks
+    - pcall protection prevents listener errors from breaking core functionality
+
+
+---------------------------------------------------------------------------------------------------
 Version: 0.1.2
 Date: 2025-11-25
   Features:
