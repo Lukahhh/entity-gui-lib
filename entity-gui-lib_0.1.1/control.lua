@@ -9,6 +9,17 @@ local GUI_PREFIX = "entity_gui_lib_"
 local FRAME_NAME = GUI_PREFIX .. "frame"
 local CONTENT_NAME = GUI_PREFIX .. "content"
 
+-- Debug mode flag (defined early for use in build functions)
+local debug_mode = false
+
+-- Helper callback storage (defined early for use in build_entity_gui)
+local function get_helper_callbacks()
+    if not storage.helper_callbacks then
+        storage.helper_callbacks = {}
+    end
+    return storage.helper_callbacks
+end
+
 ---@param player LuaPlayer
 ---@param entity LuaEntity
 ---@param registration table
@@ -209,7 +220,30 @@ local function build_entity_gui(player, entity, registration)
 
     -- Add player inventory panel if requested
     local player_inv_table = nil
-    if registration.show_player_inventory and player.character then
+    local player_inv_source = nil  -- Track which inventory we're using for refresh
+
+    -- Determine which inventory to show (character or god/editor mode)
+    local player_inventory = nil
+    local inventory_label = player.name
+
+    if registration.show_player_inventory then
+        if player.character then
+            player_inventory = player.character.get_inventory(defines.inventory.character_main)
+            inventory_label = player.name
+        else
+            -- Try god mode inventory (works in editor/god mode)
+            player_inventory = player.get_inventory(defines.inventory.god_main)
+            inventory_label = player.name .. " (Editor)"
+        end
+    end
+
+    if debug_mode then
+        log("[entity-gui-lib] Building GUI - show_player_inventory: " .. tostring(registration.show_player_inventory) .. ", has_character: " .. tostring(player.character ~= nil) .. ", has_inventory: " .. tostring(player_inventory ~= nil))
+    end
+
+    if player_inventory and player_inventory.valid then
+        player_inv_source = player.character and "character" or "god"
+
         local player_inv_frame = main_flow.add{
             type = "frame",
             name = GUI_PREFIX .. "player_inventory_frame",
@@ -227,7 +261,7 @@ local function build_entity_gui(player, entity, registration)
 
         inv_header.add{
             type = "label",
-            caption = player.name,
+            caption = inventory_label,
             style = "caption_label",
         }
 
@@ -249,55 +283,52 @@ local function build_entity_gui(player, entity, registration)
         player_inv_table.style.vertical_spacing = 0
 
         -- Build player inventory slots
-        local char_inv = player.character.get_inventory(defines.inventory.character_main)
-        if char_inv and char_inv.valid then
-            local callbacks = get_helper_callbacks()
-            local inv_id = "player_" .. player.index
+        local callbacks = get_helper_callbacks()
+        local inv_id = "player_" .. player.index
 
-            -- Store inventory reference for interactive mode
-            storage.inventory_refs = storage.inventory_refs or {}
-            storage.inventory_refs[inv_id] = {
-                inventory = char_inv,
-                item_filter = nil,
-                mod_name = nil,
-                on_transfer = nil,
-                data = nil,
-            }
+        -- Store inventory reference for interactive mode
+        storage.inventory_refs = storage.inventory_refs or {}
+        storage.inventory_refs[inv_id] = {
+            inventory = player_inventory,
+            item_filter = nil,
+            mod_name = nil,
+            on_transfer = nil,
+            data = nil,
+        }
 
-            for i = 1, #char_inv do
-                local stack = char_inv[i]
-                local slot_name = GUI_PREFIX .. "inv_slot_" .. inv_id .. "_" .. i
+        for i = 1, #player_inventory do
+            local stack = player_inventory[i]
+            local slot_name = GUI_PREFIX .. "inv_slot_" .. inv_id .. "_" .. i
 
-                if stack and stack.valid_for_read then
-                    local button = player_inv_table.add{
-                        type = "sprite-button",
-                        name = slot_name,
-                        sprite = "item/" .. stack.name,
-                        number = stack.count,
-                        tooltip = stack.prototype.localised_name,
-                        style = "slot_button",
-                    }
+            if stack and stack.valid_for_read then
+                local button = player_inv_table.add{
+                    type = "sprite-button",
+                    name = slot_name,
+                    sprite = "item/" .. stack.name,
+                    number = stack.count,
+                    tooltip = stack.prototype.localised_name,
+                    style = "slot_button",
+                }
 
-                    callbacks[slot_name] = {
-                        slot_index = i,
-                        item_stack = {name = stack.name, count = stack.count},
-                        interactive = true,
-                        inventory_id = inv_id,
-                    }
-                else
-                    local button = player_inv_table.add{
-                        type = "sprite-button",
-                        name = slot_name,
-                        style = "slot_button",
-                    }
+                callbacks[slot_name] = {
+                    slot_index = i,
+                    item_stack = {name = stack.name, count = stack.count},
+                    interactive = true,
+                    inventory_id = inv_id,
+                }
+            else
+                local button = player_inv_table.add{
+                    type = "sprite-button",
+                    name = slot_name,
+                    style = "slot_button",
+                }
 
-                    callbacks[slot_name] = {
-                        slot_index = i,
-                        item_stack = nil,
-                        interactive = true,
-                        inventory_id = inv_id,
-                    }
-                end
+                callbacks[slot_name] = {
+                    slot_index = i,
+                    item_stack = nil,
+                    interactive = true,
+                    inventory_id = inv_id,
+                }
             end
         end
     end
@@ -308,6 +339,7 @@ local function build_entity_gui(player, entity, registration)
         registration = registration,
         last_update_tick = game.tick,
         player_inv_table = player_inv_table,
+        player_inv_source = player_inv_source,  -- "character" or "god"
     }
 
     -- Focus the frame
@@ -411,14 +443,6 @@ script.on_event(defines.events.on_gui_closed, function(event)
     element.destroy()
     open_guis[player.index] = nil
 end)
-
--- Helper callback storage (defined early for use in event handlers)
-local function get_helper_callbacks()
-    if not storage.helper_callbacks then
-        storage.helper_callbacks = {}
-    end
-    return storage.helper_callbacks
-end
 
 -- Counter for unique element IDs
 local helper_id_counter = 0
@@ -745,18 +769,24 @@ script.on_event(defines.events.on_tick, function(event)
         end
 
         -- Refresh player inventory panel if present
-        if registration.show_player_inventory and player.character then
-            local char_inv = player.character.get_inventory(defines.inventory.character_main)
-            if char_inv and char_inv.valid and gui_data.player_inv_table and gui_data.player_inv_table.valid then
+        if gui_data.player_inv_table and gui_data.player_inv_table.valid then
+            -- Get the appropriate inventory based on source
+            local player_inv = nil
+            if gui_data.player_inv_source == "character" and player.character then
+                player_inv = player.character.get_inventory(defines.inventory.character_main)
+            elseif gui_data.player_inv_source == "god" then
+                player_inv = player.get_inventory(defines.inventory.god_main)
+            end
+
+            if player_inv and player_inv.valid then
                 local callbacks = get_helper_callbacks()
-                local inv_id = "player_" .. player_index
 
                 for i, child in pairs(gui_data.player_inv_table.children) do
                     if child.valid and child.name:find("^" .. GUI_PREFIX .. "inv_slot_") then
                         local callback_data = callbacks[child.name]
                         if callback_data then
                             local slot_index = callback_data.slot_index
-                            local stack = char_inv[slot_index]
+                            local stack = player_inv[slot_index]
 
                             if stack and stack.valid_for_read then
                                 child.sprite = "item/" .. stack.name
@@ -1044,9 +1074,6 @@ script.on_event(defines.events.on_gui_elem_changed, function(event)
     end
 end)
 
--- Debug mode flag
-local debug_mode = false
-
 -- Remote interface for other mods
 remote.add_interface("entity_gui_lib", {
     ---Register an entity for custom GUI replacement
@@ -1098,7 +1125,7 @@ remote.add_interface("entity_gui_lib", {
         table.insert(registrations, registration)
 
         if debug_mode then
-            log("[entity-gui-lib] Registered: " .. key .. " by " .. config.mod_name .. " (priority: " .. registration.priority .. ")")
+            log("[entity-gui-lib] Registered: " .. key .. " by " .. config.mod_name .. " (priority: " .. registration.priority .. ", show_player_inventory: " .. tostring(registration.show_player_inventory) .. ")")
         end
     end,
 
