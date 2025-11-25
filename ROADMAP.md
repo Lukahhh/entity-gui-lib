@@ -77,7 +77,44 @@ Future improvements and features under consideration. Feedback welcome!
 
 ## Community Requests
 
-*Space for features requested by mod authors*
+### GUI Event Listener System
+Allow mods to observe GUI open/close events for entities they didn't register, enabling cross-mod integration and overlay features.
+
+**Proposed API:**
+```lua
+-- Register as a listener for specific entity type
+remote.call("entity_gui_lib", "add_listener", {
+    mod_name = "my_observer_mod",
+    entity_type = "inserter",      -- or entity_name for specific entities
+    -- entity_name = "my-entity",  -- alternative: specific entity
+    -- entity_filter = "*",        -- alternative: listen to ALL entity GUIs
+    on_open = "my_open_callback",
+    on_close = "my_close_callback",
+})
+
+-- Callback signatures:
+-- on_open: function(content, entity, player, registering_mod_name)
+-- on_close: function(entity, player, registering_mod_name)
+
+-- Remove listener
+remote.call("entity_gui_lib", "remove_listener", "inserter", "my_observer_mod")
+
+-- Get all listeners for an entity
+local listeners = remote.call("entity_gui_lib", "get_listeners", "inserter")
+```
+
+**Use Cases:**
+- Cross-mod integration (Mod B reacts when Mod A's GUI opens)
+- Overlay/addon mods that enhance other mods' GUIs
+- Logging/analytics mods
+- Global GUI event tracking
+- Adding tooltips or indicators to third-party entity GUIs
+
+**Implementation Notes:**
+- Listeners called AFTER the registering mod's on_build/on_close
+- Multiple listeners per entity supported (called in registration order)
+- Listener callbacks receive the registering mod's name for context
+- Priority system possible for listener ordering
 
 ---
 
