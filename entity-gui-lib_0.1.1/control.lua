@@ -439,6 +439,20 @@ script.on_event(defines.events.on_gui_closed, function(event)
         remote.call(gui_data.registration.mod_name, gui_data.registration.on_close, gui_data.entity, player)
     end
 
+    -- Clean up player inventory ref for this player
+    local inv_refs = storage.inventory_refs or {}
+    local player_inv_id = "player_" .. player.index
+    if inv_refs[player_inv_id] then
+        inv_refs[player_inv_id] = nil
+    end
+
+    -- Clean up invalid inventory refs (inventories that no longer exist)
+    for inv_id, inv_data in pairs(inv_refs) do
+        if not inv_data.inventory or not inv_data.inventory.valid then
+            inv_refs[inv_id] = nil
+        end
+    end
+
     -- Clean up
     element.destroy()
     open_guis[player.index] = nil
@@ -972,6 +986,16 @@ script.on_event(defines.events.on_tick, function(event)
                         end
                     end
                 end
+            end
+        end
+
+        -- Refresh entity inventory displays created via create_inventory_display
+        local inv_refs = storage.inventory_refs or {}
+        for inv_id, inv_data in pairs(inv_refs) do
+            -- Skip player inventories (they're handled above)
+            local is_player_inv = type(inv_id) == "string" and inv_id:find("^player_")
+            if not is_player_inv and inv_data.inventory and inv_data.inventory.valid then
+                refresh_inventory_slots(inv_id)
             end
         end
 
