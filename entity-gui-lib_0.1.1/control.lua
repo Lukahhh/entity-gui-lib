@@ -12,12 +12,93 @@ local CONTENT_NAME = GUI_PREFIX .. "content"
 -- Debug mode flag (defined early for use in build functions)
 local debug_mode = false
 
+-- Entity status lookup table (built once at module level for performance)
+local status_lookup = nil
+local function get_status_lookup()
+    if status_lookup then return status_lookup end
+
+    status_lookup = {}
+    local es = defines.entity_status
+
+    -- Helper to safely add status
+    local function add_status(key, sprite, caption)
+        if key then status_lookup[key] = {sprite, caption} end
+    end
+
+    -- Working states
+    add_status(es.working, "utility/status_working", {"entity-status.working"})
+    add_status(es.normal, "utility/status_working", {"entity-status.normal"})
+
+    -- Yellow/warning states
+    add_status(es.low_power, "utility/status_yellow", {"entity-status.low-power"})
+    add_status(es.waiting_for_source_items, "utility/status_yellow", {"entity-status.waiting-for-source-items"})
+    add_status(es.waiting_for_space_in_destination, "utility/status_yellow", {"entity-status.waiting-for-space-in-destination"})
+    add_status(es.charging, "utility/status_yellow", {"entity-status.charging"})
+    add_status(es.waiting_for_target_to_be_built, "utility/status_yellow", {"entity-status.waiting-for-target-to-be-built"})
+    add_status(es.waiting_for_train, "utility/status_yellow", {"entity-status.waiting-for-train"})
+    add_status(es.preparing_rocket_for_launch, "utility/status_yellow", {"entity-status.preparing-rocket-for-launch"})
+    add_status(es.waiting_to_launch_rocket, "utility/status_yellow", {"entity-status.waiting-to-launch-rocket"})
+    add_status(es.waiting_for_more_parts, "utility/status_yellow", {"entity-status.waiting-for-more-parts"})
+    add_status(es.item_ingredient_shortage, "utility/status_yellow", {"entity-status.item-ingredient-shortage"})
+    add_status(es.fluid_ingredient_shortage, "utility/status_yellow", {"entity-status.fluid-ingredient-shortage"})
+    add_status(es.full_output, "utility/status_yellow", {"entity-status.full-output"})
+    add_status(es.not_connected_to_rail, "utility/status_yellow", {"entity-status.not-connected-to-rail"})
+    add_status(es.cant_divide_segments, "utility/status_yellow", {"entity-status.cant-divide-segments"})
+    add_status(es.idle, "utility/status_yellow", {"entity-status.idle"})
+
+    -- Good/active states
+    add_status(es.discharging, "utility/status_working", {"entity-status.discharging"})
+    add_status(es.fully_charged, "utility/status_working", {"entity-status.fully-charged"})
+    add_status(es.launching_rocket, "utility/status_working", {"entity-status.launching-rocket"})
+    add_status(es.networks_connected, "utility/status_working", {"entity-status.networks-connected"})
+
+    -- Not working states
+    add_status(es.no_power, "utility/status_not_working", {"entity-status.no-power"})
+    add_status(es.no_fuel, "utility/status_not_working", {"entity-status.no-fuel"})
+    add_status(es.disabled_by_control_behavior, "utility/status_not_working", {"entity-status.disabled"})
+    add_status(es.disabled_by_script, "utility/status_not_working", {"entity-status.disabled-by-script"})
+    add_status(es.marked_for_deconstruction, "utility/status_not_working", {"entity-status.marked-for-deconstruction"})
+    add_status(es.no_recipe, "utility/status_not_working", {"entity-status.no-recipe"})
+    add_status(es.no_ingredients, "utility/status_not_working", {"entity-status.no-ingredients"})
+    add_status(es.no_input_fluid, "utility/status_not_working", {"entity-status.no-input-fluid"})
+    add_status(es.no_research_in_progress, "utility/status_not_working", {"entity-status.no-research-in-progress"})
+    add_status(es.no_minable_resources, "utility/status_not_working", {"entity-status.no-minable-resources"})
+    add_status(es.no_ammo, "utility/status_not_working", {"entity-status.no-ammo"})
+    add_status(es.missing_required_fluid, "utility/status_not_working", {"entity-status.missing-required-fluid"})
+    add_status(es.missing_science_packs, "utility/status_not_working", {"entity-status.missing-science-packs"})
+    add_status(es.networks_disconnected, "utility/status_not_working", {"entity-status.networks-disconnected"})
+    add_status(es.out_of_logistic_network, "utility/status_not_working", {"entity-status.out-of-logistic-network"})
+    add_status(es.no_modules_to_transmit, "utility/status_not_working", {"entity-status.no-modules-to-transmit"})
+    add_status(es.recharging_after_power_outage, "utility/status_not_working", {"entity-status.recharging-after-power-outage"})
+    add_status(es.frozen, "utility/status_not_working", {"entity-status.frozen"})
+    add_status(es.paused, "utility/status_not_working", {"entity-status.paused"})
+
+    return status_lookup
+end
+
 -- Helper callback storage (defined early for use in build_entity_gui)
 local function get_helper_callbacks()
     if not storage.helper_callbacks then
         storage.helper_callbacks = {}
     end
     return storage.helper_callbacks
+end
+
+-- Compute a quick hash of inventory contents for change detection
+-- Returns a simple hash that changes when inventory contents change
+local function compute_inventory_hash(inventory)
+    if not inventory or not inventory.valid then return 0 end
+    local hash = 0
+    for i = 1, #inventory do
+        local stack = inventory[i]
+        if stack and stack.valid_for_read then
+            -- Combine slot index, item name hash, and count
+            -- Use string.byte on first char of name for a quick hash component
+            local name_hash = stack.name:byte(1) or 0
+            hash = hash + i * 1000 + name_hash * 100 + (stack.count % 100)
+        end
+    end
+    return hash
 end
 
 ---@param player LuaPlayer
@@ -122,64 +203,8 @@ local function build_entity_gui(player, entity, registration)
     }
     status_flow.style.vertical_spacing = 4
 
-    -- Entity status lookup table (built dynamically to handle missing statuses)
-    local status_info = {}
-    local es = defines.entity_status
-
-    -- Helper to safely add status
-    local function add_status(key, sprite, caption)
-        if key then status_info[key] = {sprite, caption} end
-    end
-
-    -- Working states
-    add_status(es.working, "utility/status_working", {"entity-status.working"})
-    add_status(es.normal, "utility/status_working", {"entity-status.normal"})
-
-    -- Yellow/warning states
-    add_status(es.low_power, "utility/status_yellow", {"entity-status.low-power"})
-    add_status(es.waiting_for_source_items, "utility/status_yellow", {"entity-status.waiting-for-source-items"})
-    add_status(es.waiting_for_space_in_destination, "utility/status_yellow", {"entity-status.waiting-for-space-in-destination"})
-    add_status(es.charging, "utility/status_yellow", {"entity-status.charging"})
-    add_status(es.waiting_for_target_to_be_built, "utility/status_yellow", {"entity-status.waiting-for-target-to-be-built"})
-    add_status(es.waiting_for_train, "utility/status_yellow", {"entity-status.waiting-for-train"})
-    add_status(es.preparing_rocket_for_launch, "utility/status_yellow", {"entity-status.preparing-rocket-for-launch"})
-    add_status(es.waiting_to_launch_rocket, "utility/status_yellow", {"entity-status.waiting-to-launch-rocket"})
-    add_status(es.waiting_for_more_parts, "utility/status_yellow", {"entity-status.waiting-for-more-parts"})
-    add_status(es.item_ingredient_shortage, "utility/status_yellow", {"entity-status.item-ingredient-shortage"})
-    add_status(es.fluid_ingredient_shortage, "utility/status_yellow", {"entity-status.fluid-ingredient-shortage"})
-    add_status(es.full_output, "utility/status_yellow", {"entity-status.full-output"})
-    add_status(es.not_connected_to_rail, "utility/status_yellow", {"entity-status.not-connected-to-rail"})
-    add_status(es.cant_divide_segments, "utility/status_yellow", {"entity-status.cant-divide-segments"})
-    add_status(es.idle, "utility/status_yellow", {"entity-status.idle"})
-
-    -- Good/active states
-    add_status(es.discharging, "utility/status_working", {"entity-status.discharging"})
-    add_status(es.fully_charged, "utility/status_working", {"entity-status.fully-charged"})
-    add_status(es.launching_rocket, "utility/status_working", {"entity-status.launching-rocket"})
-    add_status(es.networks_connected, "utility/status_working", {"entity-status.networks-connected"})
-
-    -- Not working states
-    add_status(es.no_power, "utility/status_not_working", {"entity-status.no-power"})
-    add_status(es.no_fuel, "utility/status_not_working", {"entity-status.no-fuel"})
-    add_status(es.disabled_by_control_behavior, "utility/status_not_working", {"entity-status.disabled"})
-    add_status(es.disabled_by_script, "utility/status_not_working", {"entity-status.disabled-by-script"})
-    add_status(es.marked_for_deconstruction, "utility/status_not_working", {"entity-status.marked-for-deconstruction"})
-    add_status(es.no_recipe, "utility/status_not_working", {"entity-status.no-recipe"})
-    add_status(es.no_ingredients, "utility/status_not_working", {"entity-status.no-ingredients"})
-    add_status(es.no_input_fluid, "utility/status_not_working", {"entity-status.no-input-fluid"})
-    add_status(es.no_research_in_progress, "utility/status_not_working", {"entity-status.no-research-in-progress"})
-    add_status(es.no_minable_resources, "utility/status_not_working", {"entity-status.no-minable-resources"})
-    add_status(es.no_ammo, "utility/status_not_working", {"entity-status.no-ammo"})
-    add_status(es.missing_required_fluid, "utility/status_not_working", {"entity-status.missing-required-fluid"})
-    add_status(es.missing_science_packs, "utility/status_not_working", {"entity-status.missing-science-packs"})
-    add_status(es.networks_disconnected, "utility/status_not_working", {"entity-status.networks-disconnected"})
-    add_status(es.out_of_logistic_network, "utility/status_not_working", {"entity-status.out-of-logistic-network"})
-    add_status(es.no_modules_to_transmit, "utility/status_not_working", {"entity-status.no-modules-to-transmit"})
-    add_status(es.recharging_after_power_outage, "utility/status_not_working", {"entity-status.recharging-after-power-outage"})
-    add_status(es.frozen, "utility/status_not_working", {"entity-status.frozen"})
-    add_status(es.paused, "utility/status_not_working", {"entity-status.paused"})
-
-    -- Get status display info
+    -- Get status display info (uses cached module-level lookup table)
+    local status_info = get_status_lookup()
     local status = entity.status
     local status_sprite = "utility/status_working"
     local status_caption = {"entity-status.working"}
@@ -333,13 +358,19 @@ local function build_entity_gui(player, entity, registration)
         end
     end
 
-    -- Track open GUI
+    -- Track open GUI with cached element references for performance
     open_guis[player.index] = {
         entity = entity,
         registration = registration,
         last_update_tick = game.tick,
         player_inv_table = player_inv_table,
         player_inv_source = player_inv_source,  -- "character" or "god"
+        -- Cached UI element references (avoids repeated traversal in on_tick)
+        frame = frame,
+        content = content,
+        inner_frame = inner_frame,
+        -- Inventory hash for change detection (skip refresh if unchanged)
+        last_player_inv_hash = player_inventory and compute_inventory_hash(player_inventory) or 0,
     }
 
     -- Focus the frame
@@ -487,6 +518,7 @@ local function update_slot_visual(element, stack, callback_data)
 end
 
 -- Helper to refresh all inventory slot visuals for a given inventory
+-- Optimized: uses direct table reference instead of recursive DOM traversal
 local function refresh_inventory_slots(inv_id)
     local inv_refs = storage.inventory_refs or {}
     local inv_data = inv_refs[inv_id]
@@ -498,65 +530,48 @@ local function refresh_inventory_slots(inv_id)
     local callbacks = get_helper_callbacks()
     local is_player_inv = type(inv_id) == "string" and inv_id:find("^player_")
 
-    -- For each open GUI, find and update the inventory slots
-    for player_index, gui_data in pairs(open_guis) do
-        local player = game.get_player(player_index)
-        if not player then goto next_player end
-
-        local frame = player.gui.screen[FRAME_NAME]
-        if not frame or not frame.valid then goto next_player end
-
-        -- For player inventory, use stored reference
-        if is_player_inv and gui_data.player_inv_table and gui_data.player_inv_table.valid then
-            for _, child in pairs(gui_data.player_inv_table.children) do
-                if child.valid and child.name:find("^" .. GUI_PREFIX .. "inv_slot_") then
+    -- For player inventories, iterate through open GUIs
+    if is_player_inv then
+        for player_index, gui_data in pairs(open_guis) do
+            if gui_data.player_inv_table and gui_data.player_inv_table.valid then
+                for _, child in pairs(gui_data.player_inv_table.children) do
+                    if child.valid then
+                        local callback_data = callbacks[child.name]
+                        if callback_data and callback_data.inventory_id == inv_id then
+                            local stack = inventory[callback_data.slot_index]
+                            update_slot_visual(child, stack, callback_data)
+                        end
+                    end
+                end
+            end
+        end
+    else
+        -- For entity inventories, use direct table reference (no recursive traversal)
+        local inv_tables = storage.inventory_tables or {}
+        local inv_table = inv_tables[inv_id]
+        if inv_table and inv_table.valid then
+            for _, child in pairs(inv_table.children) do
+                if child.valid then
                     local callback_data = callbacks[child.name]
-                    if callback_data and callback_data.inventory_id == inv_id then
+                    if callback_data then
                         local stack = inventory[callback_data.slot_index]
                         update_slot_visual(child, stack, callback_data)
                     end
                 end
             end
-        else
-            -- For entity inventories, search through the content area
-            local main_flow = frame.children[2]
-            if main_flow and main_flow.valid then
-                local inner_frame = main_flow.children[1]
-                if inner_frame and inner_frame.valid then
-                    local content = inner_frame[CONTENT_NAME]
-                    if content and content.valid then
-                        -- Iterate through all descendants to find inventory slots
-                        local function update_slots_in_element(parent)
-                            if not parent or not parent.valid then return end
-                            for _, child in pairs(parent.children) do
-                                if child.valid then
-                                    if child.name:find("^" .. GUI_PREFIX .. "inv_slot_") then
-                                        local callback_data = callbacks[child.name]
-                                        if callback_data and callback_data.inventory_id == inv_id then
-                                            local stack = inventory[callback_data.slot_index]
-                                            update_slot_visual(child, stack, callback_data)
-                                        end
-                                    end
-                                    -- Recurse into children
-                                    if child.children then
-                                        update_slots_in_element(child)
-                                    end
-                                end
-                            end
-                        end
-                        update_slots_in_element(content)
-                    end
-                end
-            end
         end
-
-        ::next_player::
     end
 end
 
 script.on_event(defines.events.on_gui_click, function(event)
     local element = event.element
     if not element or not element.valid then
+        return
+    end
+
+    -- Early exit: skip if not our element (avoids 7+ pattern matches on every click)
+    local name = element.name
+    if not name or name:sub(1, #GUI_PREFIX) ~= GUI_PREFIX then
         return
     end
 
@@ -961,29 +976,19 @@ script.on_event(defines.events.on_tick, function(event)
         -- Update timestamp
         gui_data.last_update_tick = event.tick
 
-        -- Get player and content
+        -- Get player and use cached content reference (performance optimization)
         local player = game.get_player(player_index)
         if not player then
             goto continue
         end
 
-        local frame = player.gui.screen[FRAME_NAME]
+        -- Use cached references instead of traversing GUI hierarchy
+        local frame = gui_data.frame
         if not frame or not frame.valid then
             goto continue
         end
 
-        -- Find content container (frame -> main_flow -> inner_frame -> content)
-        local main_flow = frame.children[2]
-        if not main_flow or not main_flow.valid then
-            goto continue
-        end
-
-        local inner_frame = main_flow.children[1]
-        if not inner_frame or not inner_frame.valid then
-            goto continue
-        end
-
-        local content = inner_frame[CONTENT_NAME]
+        local content = gui_data.content
         if not content or not content.valid then
             goto continue
         end
@@ -1009,14 +1014,19 @@ script.on_event(defines.events.on_tick, function(event)
             end
 
             if player_inv and player_inv.valid then
-                local callbacks = get_helper_callbacks()
+                -- Check if inventory has changed using hash (skip refresh if unchanged)
+                local current_hash = compute_inventory_hash(player_inv)
+                if current_hash ~= gui_data.last_player_inv_hash then
+                    gui_data.last_player_inv_hash = current_hash
+                    local callbacks = get_helper_callbacks()
 
-                for i, child in pairs(gui_data.player_inv_table.children) do
-                    if child.valid and child.name:find("^" .. GUI_PREFIX .. "inv_slot_") then
-                        local callback_data = callbacks[child.name]
-                        if callback_data then
-                            local stack = player_inv[callback_data.slot_index]
-                            update_slot_visual(child, stack, callback_data)
+                    for i, child in pairs(gui_data.player_inv_table.children) do
+                        if child.valid then
+                            local callback_data = callbacks[child.name]
+                            if callback_data then
+                                local stack = player_inv[callback_data.slot_index]
+                                update_slot_visual(child, stack, callback_data)
+                            end
                         end
                     end
                 end
@@ -1040,6 +1050,44 @@ script.on_event(defines.events.on_tick, function(event)
 
         ::continue::
     end
+
+    -- Process debounced searches (6 tick delay ~100ms for smooth typing)
+    local SEARCH_DEBOUNCE_TICKS = 6
+    local pending_searches = storage.pending_searches or {}
+    local completed_searches = {}
+
+    for search_name, search_data in pairs(pending_searches) do
+        if event.tick - search_data.tick >= SEARCH_DEBOUNCE_TICKS then
+            local scroll_pane = search_data.scroll_pane
+            if scroll_pane and scroll_pane.valid then
+                local search_text = search_data.search_text
+
+                if search_data.search_type == "item" then
+                    for _, child in pairs(scroll_pane.children) do
+                        if child.valid then
+                            local item_name = child.tags and child.tags.item_name or ""
+                            local matches = string.find(string.lower(item_name), search_text, 1, true)
+                            child.visible = search_text == "" or matches ~= nil
+                        end
+                    end
+                elseif search_data.search_type == "recipe" then
+                    for _, child in pairs(scroll_pane.children) do
+                        if child.valid then
+                            local recipe_name = child.tags and child.tags.recipe_name or ""
+                            local matches = string.find(string.lower(recipe_name), search_text, 1, true)
+                            child.visible = search_text == "" or matches ~= nil
+                        end
+                    end
+                end
+            end
+            table.insert(completed_searches, search_name)
+        end
+    end
+
+    -- Clean up completed searches
+    for _, search_name in ipairs(completed_searches) do
+        pending_searches[search_name] = nil
+    end
 end)
 
 -- Handle E key to close GUI (toggle-menu linked input)
@@ -1060,6 +1108,8 @@ script.on_init(function()
     storage.open_guis = open_guis
     storage.helper_callbacks = {}
     storage.inventory_refs = {}
+    storage.inventory_tables = {}  -- Direct references to inventory table elements for fast refresh
+    storage.pending_searches = {}  -- Debounced search queue for item/recipe selectors
 end)
 
 script.on_load(function()
@@ -1070,6 +1120,10 @@ end)
 script.on_event(defines.events.on_gui_value_changed, function(event)
     local element = event.element
     if not element or not element.valid then return end
+
+    -- Early exit: skip if not our element
+    local name = element.name
+    if not name or name:sub(1, #GUI_PREFIX) ~= GUI_PREFIX then return end
 
     local callbacks = get_helper_callbacks()
     local player = game.get_player(event.player_index)
@@ -1104,56 +1158,31 @@ script.on_event(defines.events.on_gui_value_changed, function(event)
         local callback_data = callbacks[element.name]
         if not callback_data then return end
 
-        -- Update value label
-        local value_label_name = element.name:gsub("color_slider_", "color_value_")
-        local parent = element.parent
-        if parent then
-            for _, child in pairs(parent.children) do
-                if child.name == value_label_name then
-                    child.caption = tostring(math.floor(element.slider_value))
-                    break
-                end
-            end
+        -- Update value label using cached reference (no DOM traversal)
+        local value_label = callback_data.value_label
+        if value_label and value_label.valid then
+            value_label.caption = tostring(math.floor(element.slider_value))
         end
 
-        -- Get all color values and build color object
-        local color_picker_id = callback_data.color_picker_id
+        -- Build color object using cached slider references (no DOM traversal)
         local color = {r = 0, g = 0, b = 0, a = 1}
-
-        -- Find sibling sliders in the outer flow
-        local outer_flow = parent and parent.parent
-        if outer_flow then
-            for _, child in pairs(outer_flow.children) do
-                if child.type == "flow" then
-                    for _, subchild in pairs(child.children) do
-                        if subchild.type == "slider" and subchild.name:find("color_slider_" .. color_picker_id) then
-                            local channel = subchild.name:match("_([rgba])$")
-                            if channel then
-                                color[channel] = subchild.slider_value / 255
-                            end
-                        end
-                    end
+        local all_sliders = callback_data.all_sliders
+        if all_sliders then
+            for channel, slider in pairs(all_sliders) do
+                if slider and slider.valid then
+                    color[channel] = slider.slider_value / 255
                 end
             end
         end
 
-        -- Update swatch color and tooltip
-        local swatch_name = callback_data.swatch_name
-        if swatch_name and outer_flow then
-            for _, child in pairs(outer_flow.children) do
-                if child.type == "flow" then
-                    for _, subchild in pairs(child.children) do
-                        if subchild.name == swatch_name then
-                            local r = math.floor(color.r * 255)
-                            local g = math.floor(color.g * 255)
-                            local b = math.floor(color.b * 255)
-                            subchild.style.color = color
-                            subchild.tooltip = {"", "RGB: ", r, ", ", g, ", ", b}
-                            break
-                        end
-                    end
-                end
-            end
+        -- Update swatch color and tooltip using cached reference (no DOM traversal)
+        local swatch = callback_data.swatch
+        if swatch and swatch.valid then
+            local r = math.floor(color.r * 255)
+            local g = math.floor(color.g * 255)
+            local b = math.floor(color.b * 255)
+            swatch.style.color = color
+            swatch.tooltip = {"", "RGB: ", r, ", ", g, ", ", b}
         end
 
         -- Call user callback with full color
@@ -1168,7 +1197,11 @@ end)
 script.on_event(defines.events.on_gui_selection_state_changed, function(event)
     local element = event.element
     if not element or not element.valid then return end
-    if not element.name:find("^" .. GUI_PREFIX .. "dropdown_") then return end
+
+    -- Early exit: skip if not our element (fast prefix check)
+    local name = element.name
+    if not name or name:sub(1, #GUI_PREFIX) ~= GUI_PREFIX then return end
+    if not name:find("^" .. GUI_PREFIX .. "dropdown_") then return end
 
     local callbacks = get_helper_callbacks()
     local callback_data = callbacks[element.name]
@@ -1188,7 +1221,11 @@ end)
 script.on_event(defines.events.on_gui_checked_state_changed, function(event)
     local element = event.element
     if not element or not element.valid then return end
-    if not element.name:find("^" .. GUI_PREFIX .. "toggle_") then return end
+
+    -- Early exit: skip if not our element (fast prefix check)
+    local name = element.name
+    if not name or name:sub(1, #GUI_PREFIX) ~= GUI_PREFIX then return end
+    if not name:find("^" .. GUI_PREFIX .. "toggle_") then return end
 
     local callbacks = get_helper_callbacks()
     local callback_data = callbacks[element.name]
@@ -1222,6 +1259,10 @@ script.on_event(defines.events.on_gui_text_changed, function(event)
     local element = event.element
     if not element or not element.valid then return end
 
+    -- Early exit: skip if not our element (fast prefix check)
+    local name = element.name
+    if not name or name:sub(1, #GUI_PREFIX) ~= GUI_PREFIX then return end
+
     local callbacks = get_helper_callbacks()
     local player = game.get_player(event.player_index)
     if not player then return end
@@ -1248,43 +1289,35 @@ script.on_event(defines.events.on_gui_text_changed, function(event)
         return
     end
 
-    -- Item selector search handling
+    -- Item selector search handling (debounced)
     if element.name:find("^" .. GUI_PREFIX .. "item_search_") then
         local callback_data = callbacks[element.name]
         if not callback_data then return end
 
-        local search_text = string.lower(element.text or "")
-        local scroll_pane = callback_data.scroll_pane
-        if not scroll_pane or not scroll_pane.valid then return end
-
-        -- Filter items based on search
-        for _, child in pairs(scroll_pane.children) do
-            if child.valid then
-                local item_name = child.tags and child.tags.item_name or child.name:gsub(GUI_PREFIX .. "item_button_", "")
-                local matches = string.find(string.lower(item_name), search_text, 1, true)
-                child.visible = search_text == "" or matches ~= nil
-            end
-        end
+        -- Store pending search for debounced processing in on_tick
+        storage.pending_searches = storage.pending_searches or {}
+        storage.pending_searches[element.name] = {
+            tick = game.tick,
+            search_text = string.lower(element.text or ""),
+            scroll_pane = callback_data.scroll_pane,
+            search_type = "item",
+        }
         return
     end
 
-    -- Recipe selector search handling
+    -- Recipe selector search handling (debounced)
     if element.name:find("^" .. GUI_PREFIX .. "recipe_search_") then
         local callback_data = callbacks[element.name]
         if not callback_data then return end
 
-        local search_text = string.lower(element.text or "")
-        local scroll_pane = callback_data.scroll_pane
-        if not scroll_pane or not scroll_pane.valid then return end
-
-        -- Filter recipes based on search
-        for _, child in pairs(scroll_pane.children) do
-            if child.valid then
-                local recipe_name = child.tags and child.tags.recipe_name or ""
-                local matches = string.find(string.lower(recipe_name), search_text, 1, true)
-                child.visible = search_text == "" or matches ~= nil
-            end
-        end
+        -- Store pending search for debounced processing in on_tick
+        storage.pending_searches = storage.pending_searches or {}
+        storage.pending_searches[element.name] = {
+            tick = game.tick,
+            search_text = string.lower(element.text or ""),
+            scroll_pane = callback_data.scroll_pane,
+            search_type = "recipe",
+        }
         return
     end
 end)
@@ -1293,6 +1326,10 @@ end)
 script.on_event(defines.events.on_gui_elem_changed, function(event)
     local element = event.element
     if not element or not element.valid then return end
+
+    -- Early exit: skip if not our element (fast prefix check)
+    local name = element.name
+    if not name or name:sub(1, #GUI_PREFIX) ~= GUI_PREFIX then return end
 
     local callbacks = get_helper_callbacks()
     local callback_data = callbacks[element.name]
@@ -1909,18 +1946,20 @@ remote.add_interface("entity_gui_lib", {
 
         local callbacks = get_helper_callbacks()
 
-        -- Store inventory reference for interactive mode
-        local inv_data_key = GUI_PREFIX .. "inv_data_" .. id
-        if interactive and not read_only then
-            storage.inventory_refs = storage.inventory_refs or {}
-            storage.inventory_refs[id] = {
-                inventory = inventory,
-                item_filter = config.item_filter,
-                mod_name = config.mod_name,
-                on_transfer = config.on_transfer,
-                data = config.data,
-            }
-        end
+        -- Store inventory reference for interactive mode and refresh
+        storage.inventory_refs = storage.inventory_refs or {}
+        storage.inventory_refs[id] = {
+            inventory = inventory,
+            item_filter = config.item_filter,
+            mod_name = config.mod_name,
+            on_transfer = config.on_transfer,
+            data = config.data,
+            interactive = interactive and not read_only,
+        }
+
+        -- Store direct table reference for fast refresh (eliminates recursive DOM traversal)
+        storage.inventory_tables = storage.inventory_tables or {}
+        storage.inventory_tables[id] = inv_table
 
         for i = 1, #inventory do
             local stack = inventory[i]
@@ -2324,7 +2363,7 @@ remote.add_interface("entity_gui_lib", {
 
             sliders[channel.name] = slider
 
-            -- Store callback for slider
+            -- Store callback for slider (element refs added after all sliders created)
             callbacks[slider_name] = {
                 mod_name = config.mod_name,
                 on_change = config.on_change,
@@ -2333,7 +2372,16 @@ remote.add_interface("entity_gui_lib", {
                 swatch_name = swatch_name,
                 data = config.data,
                 is_color_slider = true,
+                value_label = value_label,  -- Direct reference to value label
             }
+        end
+
+        -- Now add direct references to swatch and all sliders in each slider's callback
+        -- This eliminates DOM traversal in on_gui_value_changed
+        for _, channel in ipairs(channels) do
+            local slider_name = GUI_PREFIX .. "color_slider_" .. id .. "_" .. channel.name
+            callbacks[slider_name].swatch = swatch  -- Direct reference to swatch element
+            callbacks[slider_name].all_sliders = sliders  -- Direct reference to all slider elements
         end
 
         -- Store reference to all sliders for the swatch
