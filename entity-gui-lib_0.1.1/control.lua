@@ -658,6 +658,25 @@ script.on_event(defines.events.on_gui_click, function(event)
                 local cursor = player.cursor_stack
                 local inv_slot = inventory[slot_index]
 
+                -- Save tab selection before any transfer (will restore after)
+                local saved_tab_index = nil
+                local frame = player.gui.screen[FRAME_NAME]
+                if frame and frame.valid then
+                    local main_flow = frame.children[2]
+                    if main_flow and main_flow.valid then
+                        local inner_frame = main_flow.children[1]
+                        if inner_frame and inner_frame.valid then
+                            local content = inner_frame[CONTENT_NAME]
+                            if content and content.valid then
+                                local tabbed_pane = content[GUI_PREFIX .. "tabbed_pane"]
+                                if tabbed_pane and tabbed_pane.valid then
+                                    saved_tab_index = tabbed_pane.selected_tab_index
+                                end
+                            end
+                        end
+                    end
+                end
+
                 local transfer_occurred = false
                 local transfer_type = nil  -- "insert", "take", "swap", "quick_transfer"
 
@@ -825,6 +844,26 @@ script.on_event(defines.events.on_gui_click, function(event)
                     -- Call on_transfer callback if configured
                     if inv_data.mod_name and inv_data.on_transfer then
                         remote.call(inv_data.mod_name, inv_data.on_transfer, player, slot_index, transfer_type, inv_data.data)
+                    end
+
+                    -- Restore tab selection (transfers can cause tab to change)
+                    if saved_tab_index then
+                        local frame = player.gui.screen[FRAME_NAME]
+                        if frame and frame.valid then
+                            local main_flow = frame.children[2]
+                            if main_flow and main_flow.valid then
+                                local inner_frame = main_flow.children[1]
+                                if inner_frame and inner_frame.valid then
+                                    local content = inner_frame[CONTENT_NAME]
+                                    if content and content.valid then
+                                        local tabbed_pane = content[GUI_PREFIX .. "tabbed_pane"]
+                                        if tabbed_pane and tabbed_pane.valid and tabbed_pane.selected_tab_index ~= saved_tab_index then
+                                            tabbed_pane.selected_tab_index = saved_tab_index
+                                        end
+                                    end
+                                end
+                            end
+                        end
                     end
                 end
             end
