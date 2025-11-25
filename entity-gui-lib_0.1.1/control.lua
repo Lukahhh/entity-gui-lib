@@ -71,8 +71,15 @@ local function build_entity_gui(player, entity, registration)
         tooltip = {"gui.close-instruction"},
     }
 
+    -- Main content flow (horizontal to support player inventory panel)
+    local main_flow = frame.add{
+        type = "flow",
+        direction = "horizontal",
+    }
+    main_flow.style.horizontal_spacing = 8
+
     -- Content area with entity info and custom content
-    local inner_frame = frame.add{
+    local inner_frame = main_flow.add{
         type = "frame",
         style = "entity_frame",
         direction = "vertical",
@@ -200,11 +207,107 @@ local function build_entity_gui(player, entity, registration)
         remote.call(registration.mod_name, registration.on_build, content, entity, player)
     end
 
+    -- Add player inventory panel if requested
+    local player_inv_table = nil
+    if registration.show_player_inventory and player.character then
+        local player_inv_frame = main_flow.add{
+            type = "frame",
+            name = GUI_PREFIX .. "player_inventory_frame",
+            style = "entity_frame",
+            direction = "vertical",
+        }
+
+        -- Player inventory header
+        local inv_header = player_inv_frame.add{
+            type = "flow",
+            direction = "horizontal",
+        }
+        inv_header.style.vertical_align = "center"
+        inv_header.style.bottom_margin = 4
+
+        inv_header.add{
+            type = "label",
+            caption = player.name,
+            style = "caption_label",
+        }
+
+        -- Player inventory scroll pane
+        local inv_scroll = player_inv_frame.add{
+            type = "scroll-pane",
+            name = GUI_PREFIX .. "player_inv_scroll",
+            horizontal_scroll_policy = "never",
+            vertical_scroll_policy = "auto-and-reserve-space",
+        }
+        inv_scroll.style.maximal_height = 320
+
+        player_inv_table = inv_scroll.add{
+            type = "table",
+            name = GUI_PREFIX .. "player_inv_table",
+            column_count = 10,
+        }
+        player_inv_table.style.horizontal_spacing = 0
+        player_inv_table.style.vertical_spacing = 0
+
+        -- Build player inventory slots
+        local char_inv = player.character.get_inventory(defines.inventory.character_main)
+        if char_inv and char_inv.valid then
+            local callbacks = get_helper_callbacks()
+            local inv_id = "player_" .. player.index
+
+            -- Store inventory reference for interactive mode
+            storage.inventory_refs = storage.inventory_refs or {}
+            storage.inventory_refs[inv_id] = {
+                inventory = char_inv,
+                item_filter = nil,
+                mod_name = nil,
+                on_transfer = nil,
+                data = nil,
+            }
+
+            for i = 1, #char_inv do
+                local stack = char_inv[i]
+                local slot_name = GUI_PREFIX .. "inv_slot_" .. inv_id .. "_" .. i
+
+                if stack and stack.valid_for_read then
+                    local button = player_inv_table.add{
+                        type = "sprite-button",
+                        name = slot_name,
+                        sprite = "item/" .. stack.name,
+                        number = stack.count,
+                        tooltip = stack.prototype.localised_name,
+                        style = "slot_button",
+                    }
+
+                    callbacks[slot_name] = {
+                        slot_index = i,
+                        item_stack = {name = stack.name, count = stack.count},
+                        interactive = true,
+                        inventory_id = inv_id,
+                    }
+                else
+                    local button = player_inv_table.add{
+                        type = "sprite-button",
+                        name = slot_name,
+                        style = "slot_button",
+                    }
+
+                    callbacks[slot_name] = {
+                        slot_index = i,
+                        item_stack = nil,
+                        interactive = true,
+                        inventory_id = inv_id,
+                    }
+                end
+            end
+        end
+    end
+
     -- Track open GUI
     open_guis[player.index] = {
         entity = entity,
         registration = registration,
         last_update_tick = game.tick,
+        player_inv_table = player_inv_table,
     }
 
     -- Focus the frame
@@ -599,11 +702,6 @@ script.on_event(defines.events.on_tick, function(event)
     for player_index, gui_data in pairs(open_guis) do
         local registration = gui_data.registration
 
-        -- Skip if no update callback
-        if not registration.on_update then
-            goto continue
-        end
-
         -- Check if enough ticks have passed
         local interval = registration.update_interval or 10
         if event.tick - gui_data.last_update_tick < interval then
@@ -624,8 +722,13 @@ script.on_event(defines.events.on_tick, function(event)
             goto continue
         end
 
-        -- Find content container
-        local inner_frame = frame.children[2]
+        -- Find content container (frame -> main_flow -> inner_frame -> content)
+        local main_flow = frame.children[2]
+        if not main_flow or not main_flow.valid then
+            goto continue
+        end
+
+        local inner_frame = main_flow.children[1]
         if not inner_frame or not inner_frame.valid then
             goto continue
         end
@@ -635,10 +738,41 @@ script.on_event(defines.events.on_tick, function(event)
             goto continue
         end
 
-        -- Call update callback
+        -- Call update callback if configured
         local entity = gui_data.entity
-        if entity and entity.valid and registration.mod_name then
+        if registration.on_update and entity and entity.valid and registration.mod_name then
             remote.call(registration.mod_name, registration.on_update, content, entity, player)
+        end
+
+        -- Refresh player inventory panel if present
+        if registration.show_player_inventory and player.character then
+            local char_inv = player.character.get_inventory(defines.inventory.character_main)
+            if char_inv and char_inv.valid and gui_data.player_inv_table and gui_data.player_inv_table.valid then
+                local callbacks = get_helper_callbacks()
+                local inv_id = "player_" .. player_index
+
+                for i, child in pairs(gui_data.player_inv_table.children) do
+                    if child.valid and child.name:find("^" .. GUI_PREFIX .. "inv_slot_") then
+                        local callback_data = callbacks[child.name]
+                        if callback_data then
+                            local slot_index = callback_data.slot_index
+                            local stack = char_inv[slot_index]
+
+                            if stack and stack.valid_for_read then
+                                child.sprite = "item/" .. stack.name
+                                child.number = stack.count
+                                child.tooltip = stack.prototype.localised_name
+                                callback_data.item_stack = {name = stack.name, count = stack.count}
+                            else
+                                child.sprite = nil
+                                child.number = nil
+                                child.tooltip = nil
+                                callback_data.item_stack = nil
+                            end
+                        end
+                    end
+                end
+            end
         end
 
         ::continue::
@@ -916,7 +1050,7 @@ local debug_mode = false
 -- Remote interface for other mods
 remote.add_interface("entity_gui_lib", {
     ---Register an entity for custom GUI replacement
-    ---@param config table {mod_name: string, entity_name?: string, entity_type?: string, title?: LocalisedString, on_build: string, on_close?: string, priority?: number}
+    ---@param config table {mod_name: string, entity_name?: string, entity_type?: string, title?: LocalisedString, on_build: string, on_close?: string, priority?: number, show_player_inventory?: boolean}
     register = function(config)
         if not config then
             error("entity_gui_lib.register: config is required")
@@ -944,6 +1078,7 @@ remote.add_interface("entity_gui_lib", {
             update_interval = config.update_interval or 10,
             priority = config.priority or 0,
             preview_size = config.preview_size,
+            show_player_inventory = config.show_player_inventory or false,
         }
 
         -- Initialize list if needed
@@ -1029,8 +1164,13 @@ remote.add_interface("entity_gui_lib", {
             return false
         end
 
-        -- Find content container
-        local inner_frame = frame.children[2] -- entity_frame
+        -- Find content container (frame -> main_flow -> inner_frame -> content)
+        local main_flow = frame.children[2]
+        if not main_flow or not main_flow.valid then
+            return false
+        end
+
+        local inner_frame = main_flow.children[1]
         if not inner_frame or not inner_frame.valid then
             return false
         end
@@ -1067,7 +1207,18 @@ remote.add_interface("entity_gui_lib", {
             return nil
         end
 
-        return frame[CONTENT_NAME] or nil
+        -- Navigate: frame -> main_flow -> inner_frame -> content
+        local main_flow = frame.children[2]
+        if not main_flow or not main_flow.valid then
+            return nil
+        end
+
+        local inner_frame = main_flow.children[1]
+        if not inner_frame or not inner_frame.valid then
+            return nil
+        end
+
+        return inner_frame[CONTENT_NAME] or nil
     end,
 
     ---Get the entity for a player's open GUI
