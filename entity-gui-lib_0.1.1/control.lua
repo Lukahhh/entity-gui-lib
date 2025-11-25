@@ -451,6 +451,27 @@ local function get_next_helper_id()
     return helper_id_counter
 end
 
+-- Helper to update a single inventory slot visual
+local function update_slot_visual(element, stack, callback_data)
+    if not element or not element.valid then return end
+
+    if stack and stack.valid_for_read then
+        element.sprite = "item/" .. stack.name
+        element.number = stack.count
+        element.tooltip = stack.prototype.localised_name
+        if callback_data then
+            callback_data.item_stack = {name = stack.name, count = stack.count}
+        end
+    else
+        element.sprite = ""
+        element.number = nil
+        element.tooltip = ""
+        if callback_data then
+            callback_data.item_stack = nil
+        end
+    end
+end
+
 -- Helper to refresh all inventory slot visuals for a given inventory
 local function refresh_inventory_slots(inv_id)
     local inv_refs = storage.inventory_refs or {}
@@ -461,47 +482,61 @@ local function refresh_inventory_slots(inv_id)
 
     local inventory = inv_data.inventory
     local callbacks = get_helper_callbacks()
+    local is_player_inv = type(inv_id) == "string" and inv_id:find("^player_")
 
-    -- Find and update all slots for this inventory
-    for slot_name, callback_data in pairs(callbacks) do
-        if callback_data.inventory_id == inv_id and slot_name:find("^" .. GUI_PREFIX .. "inv_slot_") then
-            local slot_index = callback_data.slot_index
-            local stack = inventory[slot_index]
+    -- For each open GUI, find and update the inventory slots
+    for player_index, gui_data in pairs(open_guis) do
+        local player = game.get_player(player_index)
+        if not player then goto next_player end
 
-            -- Find the GUI element - need to search through all players' GUIs
-            for player_index, gui_data in pairs(open_guis) do
-                local player = game.get_player(player_index)
-                if player then
-                    local frame = player.gui.screen[FRAME_NAME]
-                    if frame and frame.valid then
-                        -- Search for the element recursively
-                        local function find_element(parent, name)
-                            if parent.name == name then return parent end
-                            for _, child in pairs(parent.children or {}) do
-                                local found = find_element(child, name)
-                                if found then return found end
+        local frame = player.gui.screen[FRAME_NAME]
+        if not frame or not frame.valid then goto next_player end
+
+        -- For player inventory, use stored reference
+        if is_player_inv and gui_data.player_inv_table and gui_data.player_inv_table.valid then
+            for _, child in pairs(gui_data.player_inv_table.children) do
+                if child.valid and child.name:find("^" .. GUI_PREFIX .. "inv_slot_") then
+                    local callback_data = callbacks[child.name]
+                    if callback_data and callback_data.inventory_id == inv_id then
+                        local stack = inventory[callback_data.slot_index]
+                        update_slot_visual(child, stack, callback_data)
+                    end
+                end
+            end
+        else
+            -- For entity inventories, search through the content area
+            local main_flow = frame.children[2]
+            if main_flow and main_flow.valid then
+                local inner_frame = main_flow.children[1]
+                if inner_frame and inner_frame.valid then
+                    local content = inner_frame[CONTENT_NAME]
+                    if content and content.valid then
+                        -- Iterate through all descendants to find inventory slots
+                        local function update_slots_in_element(parent)
+                            if not parent or not parent.valid then return end
+                            for _, child in pairs(parent.children) do
+                                if child.valid then
+                                    if child.name:find("^" .. GUI_PREFIX .. "inv_slot_") then
+                                        local callback_data = callbacks[child.name]
+                                        if callback_data and callback_data.inventory_id == inv_id then
+                                            local stack = inventory[callback_data.slot_index]
+                                            update_slot_visual(child, stack, callback_data)
+                                        end
+                                    end
+                                    -- Recurse into children
+                                    if child.children then
+                                        update_slots_in_element(child)
+                                    end
+                                end
                             end
-                            return nil
                         end
-
-                        local element = find_element(frame, slot_name)
-                        if element and element.valid then
-                            if stack and stack.valid_for_read then
-                                element.sprite = "item/" .. stack.name
-                                element.number = stack.count
-                                element.tooltip = stack.prototype.localised_name
-                                callback_data.item_stack = {name = stack.name, count = stack.count}
-                            else
-                                element.sprite = nil
-                                element.number = nil
-                                element.tooltip = nil
-                                callback_data.item_stack = nil
-                            end
-                        end
+                        update_slots_in_element(content)
                     end
                 end
             end
         end
+
+        ::next_player::
     end
 end
 
@@ -765,17 +800,7 @@ script.on_event(defines.events.on_gui_click, function(event)
 
                 -- Update the button visual
                 if transfer_occurred then
-                    if inv_slot and inv_slot.valid_for_read then
-                        element.sprite = "item/" .. inv_slot.name
-                        element.number = inv_slot.count
-                        element.tooltip = inv_slot.prototype.localised_name
-                        callback_data.item_stack = {name = inv_slot.name, count = inv_slot.count}
-                    else
-                        element.sprite = nil
-                        element.number = nil
-                        element.tooltip = nil
-                        callback_data.item_stack = nil
-                    end
+                    update_slot_visual(element, inv_slot, callback_data)
 
                     -- Mark interaction time to prevent refresh interference
                     local gui_data = open_guis[player.index]
@@ -942,20 +967,8 @@ script.on_event(defines.events.on_tick, function(event)
                     if child.valid and child.name:find("^" .. GUI_PREFIX .. "inv_slot_") then
                         local callback_data = callbacks[child.name]
                         if callback_data then
-                            local slot_index = callback_data.slot_index
-                            local stack = player_inv[slot_index]
-
-                            if stack and stack.valid_for_read then
-                                child.sprite = "item/" .. stack.name
-                                child.number = stack.count
-                                child.tooltip = stack.prototype.localised_name
-                                callback_data.item_stack = {name = stack.name, count = stack.count}
-                            else
-                                child.sprite = nil
-                                child.number = nil
-                                child.tooltip = nil
-                                callback_data.item_stack = nil
-                            end
+                            local stack = player_inv[callback_data.slot_index]
+                            update_slot_visual(child, stack, callback_data)
                         end
                     end
                 end
@@ -1448,20 +1461,8 @@ remote.add_interface("entity_gui_lib", {
             if child.valid and child.name:find("^" .. GUI_PREFIX .. "inv_slot_") then
                 local callback_data = callbacks[child.name]
                 if callback_data then
-                    local slot_index = callback_data.slot_index
-                    local stack = inventory[slot_index]
-
-                    if stack and stack.valid_for_read then
-                        child.sprite = "item/" .. stack.name
-                        child.number = stack.count
-                        child.tooltip = stack.prototype.localised_name
-                        callback_data.item_stack = {name = stack.name, count = stack.count}
-                    else
-                        child.sprite = nil
-                        child.number = nil
-                        child.tooltip = nil
-                        callback_data.item_stack = nil
-                    end
+                    local stack = inventory[callback_data.slot_index]
+                    update_slot_visual(child, stack, callback_data)
                 end
             end
         end
