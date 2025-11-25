@@ -15,9 +15,10 @@ Date: 2025-11-25
     - Logging/analytics mods
     - Adding tooltips or indicators to third-party entity GUIs
   Bugfixes:
-    - Fixed shift-click transfers from player inventory not refreshing custom GUI content
-      - Previously, shift-clicking from player → entity would not update custom GUI elements (e.g., "Have" columns)
-      - Now triggers the GUI's on_update callback after player → entity shift-click transfers
+    - Fixed shift-click transfers from player inventory not updating custom GUI elements
+      - Previously, shift-clicking from player → entity would not trigger callbacks to update UI (e.g., "Have" columns)
+      - Now calls target inventory's on_transfer callback with transfer_type = "quick_transfer_received"
+      - Falls back to full GUI refresh if no on_transfer callback is configured
   Internal:
     - Added storage.listeners for tracking listener registrations
     - Listeners called after registering mod's on_build/on_close callbacks

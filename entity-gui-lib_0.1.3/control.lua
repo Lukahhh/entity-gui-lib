@@ -868,14 +868,21 @@ script.on_event(defines.events.on_gui_click, function(event)
                                     refresh_inventory_slots(target_inv_id)
                                 end
 
-                                -- For shift-click from player to entity, trigger full GUI refresh
-                                -- This rebuilds the content via on_build, ensuring "Have" columns etc. are updated
-                                if is_player_inv then
-                                    if debug_mode then
-                                        log("[entity-gui-lib] Triggering GUI refresh after player->entity shift-click")
+                                -- For shift-click from player to entity, call target inventory's on_transfer callback
+                                if is_player_inv and target_inv_id then
+                                    local target_inv_data = storage.inventory_refs[target_inv_id]
+                                    if target_inv_data and target_inv_data.mod_name and target_inv_data.on_transfer then
+                                        if debug_mode then
+                                            log("[entity-gui-lib] Calling target inventory on_transfer after player->entity shift-click")
+                                        end
+                                        remote.call(target_inv_data.mod_name, target_inv_data.on_transfer, player, nil, "quick_transfer_received", target_inv_data.data)
+                                    else
+                                        -- Fallback to full refresh if no on_transfer callback
+                                        if debug_mode then
+                                            log("[entity-gui-lib] No on_transfer callback, triggering full GUI refresh")
+                                        end
+                                        remote.call("entity_gui_lib", "refresh", player.index)
                                     end
-                                    -- Use the refresh remote function to rebuild content
-                                    remote.call("entity_gui_lib", "refresh", player.index)
                                 end
                             end
                         end
