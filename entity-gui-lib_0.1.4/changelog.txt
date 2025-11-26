@@ -1,4 +1,17 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.1.5
+Date: 2025-11-27
+  Features:
+    - Added create_columns helper for multi-column layouts
+      - Arranges content side-by-side in vertical columns
+      - column_count: Number of columns (default 2)
+      - spacing: Horizontal gap between columns in pixels (default 12)
+      - widths: Optional array of fixed widths per column
+      - vertical_spacing: Vertical gap within columns (default 8)
+    - Enables more space-efficient GUI designs (e.g., cargo and fluid transfer side-by-side)
+
+
+---------------------------------------------------------------------------------------------------
 Version: 0.1.4
 Date: 2025-11-26
   Features:
