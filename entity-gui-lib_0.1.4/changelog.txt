@@ -1,4 +1,14 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.1.4
+Date: 2025-11-26
+  Features:
+    - Player inventory position option via player_inventory_position registration setting
+      - "right" (default) - Player inventory on right, custom content on left (existing behavior)
+      - "left" - Player inventory on left, custom content on right (vanilla Factorio style)
+    - Allows mods to match vanilla Factorio's machine GUI layout where inventory appears on the left
+
+
+---------------------------------------------------------------------------------------------------
 Version: 0.1.3
 Date: 2025-11-25
   Features:
