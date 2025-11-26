@@ -8,6 +8,7 @@ local open_guis = {}
 local GUI_PREFIX = "entity_gui_lib_"
 local FRAME_NAME = GUI_PREFIX .. "frame"
 local CONTENT_NAME = GUI_PREFIX .. "content"
+local INNER_FRAME_NAME = GUI_PREFIX .. "inner_frame"
 
 -- Debug mode flag (defined early for use in build functions)
 local debug_mode = false
@@ -173,6 +174,7 @@ local function build_entity_gui(player, entity, registration)
     -- Content area with entity info and custom content
     local inner_frame = main_flow.add{
         type = "frame",
+        name = INNER_FRAME_NAME,
         style = "entity_frame",
         direction = "vertical",
     }
@@ -269,12 +271,18 @@ local function build_entity_gui(player, entity, registration)
     if player_inventory and player_inventory.valid then
         player_inv_source = player.character and "character" or "god"
 
-        local player_inv_frame = main_flow.add{
+        -- Determine frame position: "left" inserts at index 1 (before inner_frame), "right" appends at end
+        local inv_frame_config = {
             type = "frame",
             name = GUI_PREFIX .. "player_inventory_frame",
             style = "entity_frame",
             direction = "vertical",
         }
+        if registration.player_inventory_position == "left" then
+            inv_frame_config.index = 1
+        end
+
+        local player_inv_frame = main_flow.add(inv_frame_config)
 
         -- Player inventory header
         local inv_header = player_inv_frame.add{
@@ -760,7 +768,7 @@ script.on_event(defines.events.on_gui_click, function(event)
                 if frame and frame.valid then
                     local main_flow = frame.children[2]
                     if main_flow and main_flow.valid then
-                        local inner_frame = main_flow.children[1]
+                        local inner_frame = main_flow[INNER_FRAME_NAME]
                         if inner_frame and inner_frame.valid then
                             local content = inner_frame[CONTENT_NAME]
                             if content and content.valid then
@@ -978,7 +986,7 @@ script.on_event(defines.events.on_gui_click, function(event)
                         if frame and frame.valid then
                             local main_flow = frame.children[2]
                             if main_flow and main_flow.valid then
-                                local inner_frame = main_flow.children[1]
+                                local inner_frame = main_flow[INNER_FRAME_NAME]
                                 if inner_frame and inner_frame.valid then
                                     local content = inner_frame[CONTENT_NAME]
                                     if content and content.valid then
@@ -1488,6 +1496,7 @@ remote.add_interface("entity_gui_lib", {
             priority = config.priority or 0,
             preview_size = config.preview_size,
             show_player_inventory = config.show_player_inventory or false,
+            player_inventory_position = config.player_inventory_position or "right",
         }
 
         -- Initialize list if needed
@@ -1507,7 +1516,7 @@ remote.add_interface("entity_gui_lib", {
         table.insert(registrations, registration)
 
         if debug_mode then
-            log("[entity-gui-lib] Registered: " .. key .. " by " .. config.mod_name .. " (priority: " .. registration.priority .. ", show_player_inventory: " .. tostring(registration.show_player_inventory) .. ")")
+            log("[entity-gui-lib] Registered: " .. key .. " by " .. config.mod_name .. " (priority: " .. registration.priority .. ", show_player_inventory: " .. tostring(registration.show_player_inventory) .. ", player_inventory_position: " .. registration.player_inventory_position .. ")")
         end
     end,
 
@@ -1675,7 +1684,7 @@ remote.add_interface("entity_gui_lib", {
             return false
         end
 
-        local inner_frame = main_flow.children[1]
+        local inner_frame = main_flow[INNER_FRAME_NAME]
         if not inner_frame or not inner_frame.valid then
             return false
         end
@@ -1718,7 +1727,7 @@ remote.add_interface("entity_gui_lib", {
             return nil
         end
 
-        local inner_frame = main_flow.children[1]
+        local inner_frame = main_flow[INNER_FRAME_NAME]
         if not inner_frame or not inner_frame.valid then
             return nil
         end
