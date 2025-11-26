@@ -2610,6 +2610,47 @@ remote.add_interface("entity_gui_lib", {
         return outer_flow, sliders
     end,
 
+    ---Create a column layout for arranging content side-by-side
+    ---@param container LuaGuiElement Parent container to add columns to
+    ---@param config table {column_count?: number, spacing?: number, widths?: number[], vertical_spacing?: number}
+    ---config.column_count: Number of columns (default 2)
+    ---config.spacing: Horizontal spacing between columns in pixels (default 12)
+    ---config.widths: Optional array of widths for each column (e.g., {200, 300})
+    ---config.vertical_spacing: Vertical spacing within each column (default 8)
+    ---@return LuaGuiElement[] columns Array of vertical flow elements, one per column
+    create_columns = function(container, config)
+        config = config or {}
+        local column_count = config.column_count or 2
+        local spacing = config.spacing or 12
+        local vertical_spacing = config.vertical_spacing or 8
+
+        -- Create outer horizontal flow
+        local outer_flow = container.add{
+            type = "flow",
+            direction = "horizontal",
+        }
+        outer_flow.style.horizontal_spacing = spacing
+
+        -- Create vertical flow for each column
+        local columns = {}
+        for i = 1, column_count do
+            local column = outer_flow.add{
+                type = "flow",
+                direction = "vertical",
+            }
+            column.style.vertical_spacing = vertical_spacing
+
+            -- Apply width if specified
+            if config.widths and config.widths[i] then
+                column.style.width = config.widths[i]
+            end
+
+            columns[i] = column
+        end
+
+        return columns
+    end,
+
     ---Enable or disable debug mode
     ---@param enabled boolean
     set_debug_mode = function(enabled)
