@@ -93,10 +93,11 @@ local function compute_inventory_hash(inventory)
     for i = 1, #inventory do
         local stack = inventory[i]
         if stack and stack.valid_for_read then
-            -- Combine slot index, item name hash, and count
+            -- Combine slot index, item name hash, count, and quality
             -- Use string.byte on first char of name for a quick hash component
             local name_hash = stack.name:byte(1) or 0
-            hash = hash + i * 1000 + name_hash * 100 + (stack.count % 100)
+            local quality_hash = stack.quality and stack.quality.level or 0
+            hash = hash + i * 1000 + name_hash * 100 + (stack.count % 100) + quality_hash * 10000
         end
     end
     return hash
@@ -334,18 +335,21 @@ local function build_entity_gui(player, entity, registration)
             local slot_name = GUI_PREFIX .. "inv_slot_" .. inv_id .. "_" .. i
 
             if stack and stack.valid_for_read then
+                -- Get quality name for storage (nil for normal quality)
+                local quality_name = stack.quality and stack.quality.name or nil
+
                 local button = player_inv_table.add{
                     type = "sprite-button",
                     name = slot_name,
                     sprite = "item/" .. stack.name,
                     number = stack.count,
-                    tooltip = stack.prototype.localised_name,
+                    tooltip = build_item_tooltip(stack),
                     style = "slot_button",
                 }
 
                 callbacks[slot_name] = {
                     slot_index = i,
-                    item_stack = {name = stack.name, count = stack.count},
+                    item_stack = {name = stack.name, count = stack.count, quality = quality_name},
                     interactive = true,
                     inventory_id = inv_id,
                 }
@@ -585,6 +589,24 @@ local function get_next_helper_id()
     return helper_id_counter
 end
 
+-- Helper to build a quality-aware tooltip for an item stack
+-- Returns a localised string with item name and quality indicator (if not normal)
+local function build_item_tooltip(stack)
+    if not stack or not stack.valid_for_read then
+        return ""
+    end
+
+    local base_tooltip = stack.prototype.localised_name
+
+    -- Check if item has quality above normal (level 0)
+    if stack.quality and stack.quality.level > 0 then
+        -- Build tooltip with quality icon and name: "Item Name\n[img=quality/rare] Rare"
+        return {"", base_tooltip, "\n[img=quality/" .. stack.quality.name .. "] ", stack.quality.localised_name}
+    end
+
+    return base_tooltip
+end
+
 -- Helper to update a single inventory slot visual
 local function update_slot_visual(element, stack, callback_data)
     if not element or not element.valid then return end
@@ -592,9 +614,11 @@ local function update_slot_visual(element, stack, callback_data)
     if stack and stack.valid_for_read then
         element.sprite = "item/" .. stack.name
         element.number = stack.count
-        element.tooltip = stack.prototype.localised_name
+        element.tooltip = build_item_tooltip(stack)
         if callback_data then
-            callback_data.item_stack = {name = stack.name, count = stack.count}
+            -- Store quality name for transfers and callbacks
+            local quality_name = stack.quality and stack.quality.name or nil
+            callback_data.item_stack = {name = stack.name, count = stack.count, quality = quality_name}
         end
     else
         element.sprite = ""
@@ -830,18 +854,23 @@ script.on_event(defines.events.on_gui_click, function(event)
                         if target_inv then
                             local item_name = inv_slot.name
                             local item_count = inv_slot.count
+                            local item_quality = inv_slot.quality and inv_slot.quality.name or nil
                             local remaining = item_count
 
-                            -- First pass: try to stack with existing items of same type
+                            -- First pass: try to stack with existing items of same type AND quality
                             for i = 1, #target_inv do
                                 if remaining <= 0 then break end
                                 local target_slot = target_inv[i]
                                 if target_slot and target_slot.valid_for_read and target_slot.name == item_name then
-                                    local can_add = target_slot.prototype.stack_size - target_slot.count
-                                    if can_add > 0 then
-                                        local to_add = math.min(can_add, remaining)
-                                        target_slot.count = target_slot.count + to_add
-                                        remaining = remaining - to_add
+                                    -- Only stack with items of matching quality
+                                    local target_quality = target_slot.quality and target_slot.quality.name or nil
+                                    if target_quality == item_quality then
+                                        local can_add = target_slot.prototype.stack_size - target_slot.count
+                                        if can_add > 0 then
+                                            local to_add = math.min(can_add, remaining)
+                                            target_slot.count = target_slot.count + to_add
+                                            remaining = remaining - to_add
+                                        end
                                     end
                                 end
                             end
@@ -852,7 +881,7 @@ script.on_event(defines.events.on_gui_click, function(event)
                                 local target_slot = target_inv[i]
                                 if not target_slot or not target_slot.valid_for_read then
                                     local to_add = math.min(prototypes.item[item_name].stack_size, remaining)
-                                    target_inv[i].set_stack{name = item_name, count = to_add}
+                                    target_inv[i].set_stack{name = item_name, count = to_add, quality = item_quality}
                                     remaining = remaining - to_add
                                 end
                             end
@@ -899,6 +928,7 @@ script.on_event(defines.events.on_gui_click, function(event)
                     -- Player has item on cursor
                     local item_name = cursor.name
                     local item_count = cursor.count
+                    local cursor_quality = cursor.quality and cursor.quality.name or nil
 
                     -- Check item filter if configured
                     local allowed = true
@@ -909,8 +939,9 @@ script.on_event(defines.events.on_gui_click, function(event)
                     if allowed then
                         if inv_slot and inv_slot.valid_for_read then
                             -- Slot has items
-                            if inv_slot.name == item_name then
-                                -- Same item type - try to stack
+                            local slot_quality = inv_slot.quality and inv_slot.quality.name or nil
+                            if inv_slot.name == item_name and slot_quality == cursor_quality then
+                                -- Same item type AND quality - try to stack
                                 local can_insert = inv_slot.prototype.stack_size - inv_slot.count
                                 if can_insert > 0 then
                                     local to_insert = math.min(can_insert, item_count)
@@ -923,18 +954,19 @@ script.on_event(defines.events.on_gui_click, function(event)
                                     transfer_occurred = true
                                     transfer_type = "insert"
                                 end
-                            else
-                                -- Different item type - swap
+                            elseif inv_slot.name ~= item_name or slot_quality ~= cursor_quality then
+                                -- Different item type or quality - swap
                                 local old_name = inv_slot.name
                                 local old_count = inv_slot.count
-                                inv_slot.set_stack{name = item_name, count = item_count}
-                                cursor.set_stack{name = old_name, count = old_count}
+                                local old_quality = slot_quality
+                                inv_slot.set_stack{name = item_name, count = item_count, quality = cursor_quality}
+                                cursor.set_stack{name = old_name, count = old_count, quality = old_quality}
                                 transfer_occurred = true
                                 transfer_type = "swap"
                             end
                         else
                             -- Empty slot - insert cursor items
-                            inv_slot.set_stack{name = item_name, count = item_count}
+                            inv_slot.set_stack{name = item_name, count = item_count, quality = cursor_quality}
                             cursor.clear()
                             transfer_occurred = true
                             transfer_type = "insert"
@@ -945,11 +977,12 @@ script.on_event(defines.events.on_gui_click, function(event)
                     if inv_slot and inv_slot.valid_for_read then
                         local item_name = inv_slot.name
                         local item_count = inv_slot.count
+                        local item_quality = inv_slot.quality and inv_slot.quality.name or nil
 
                         -- Right-click takes half
                         if event.button == defines.mouse_button_type.right then
                             local take_count = math.ceil(item_count / 2)
-                            cursor.set_stack{name = item_name, count = take_count}
+                            cursor.set_stack{name = item_name, count = take_count, quality = item_quality}
                             if take_count >= item_count then
                                 inv_slot.clear()
                             else
@@ -957,7 +990,7 @@ script.on_event(defines.events.on_gui_click, function(event)
                             end
                         else
                             -- Left-click takes all
-                            cursor.set_stack{name = item_name, count = item_count}
+                            cursor.set_stack{name = item_name, count = item_count, quality = item_quality}
                             inv_slot.clear()
                         end
                         transfer_occurred = true
@@ -2183,12 +2216,15 @@ remote.add_interface("entity_gui_lib", {
             local slot_name = GUI_PREFIX .. "inv_slot_" .. id .. "_" .. i
 
             if stack and stack.valid_for_read then
+                -- Get quality name for storage (nil for normal quality)
+                local quality_name = stack.quality and stack.quality.name or nil
+
                 local button = inv_table.add{
                     type = "sprite-button",
                     name = slot_name,
                     sprite = "item/" .. stack.name,
                     number = stack.count,
-                    tooltip = stack.prototype.localised_name,
+                    tooltip = build_item_tooltip(stack),
                     style = "slot_button",
                 }
 
@@ -2196,7 +2232,7 @@ remote.add_interface("entity_gui_lib", {
                     mod_name = config.mod_name,
                     on_click = config.on_click,
                     slot_index = i,
-                    item_stack = {name = stack.name, count = stack.count},
+                    item_stack = {name = stack.name, count = stack.count, quality = quality_name},
                     data = config.data,
                     interactive = interactive and not read_only,
                     inventory_id = id,
