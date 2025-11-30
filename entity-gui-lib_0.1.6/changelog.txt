@@ -1,4 +1,25 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.1.7
+Date: 2025-11-30
+  Features:
+    - Transfer Restriction Option for create_inventory_display
+      - New allow_player_transfer option (default: true)
+      - When false, prevents items from being transferred to player inventory
+      - Blocks shift-click from entity inventory to player inventory
+      - Blocks placing cursor items (from restricted inventory) into player inventory
+      - Still allows rearranging/swapping items within the entity inventory
+      - Useful for mods that need view + internal manipulation without external transfers
+  Technical:
+    - Added storage.cursor_source for tracking transfer restrictions
+  Example:
+    - remote.call("entity_gui_lib", "create_inventory_display", container, {
+        inventory = entity_inventory,
+        interactive = true,
+        allow_player_transfer = false,
+      })
+
+
+---------------------------------------------------------------------------------------------------
 Version: 0.1.6
 Date: 2025-11-30
   Features:

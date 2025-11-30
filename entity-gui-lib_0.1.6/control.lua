@@ -922,11 +922,19 @@ script.on_event(defines.events.on_gui_click, function(event)
                             end
                         else
                             -- Source is entity inventory, target is player inventory
-                            local player_inv_id = "player_" .. player.index
-                            local player_inv_data = inv_refs[player_inv_id]
-                            if player_inv_data and player_inv_data.inventory and player_inv_data.inventory.valid then
-                                target_inv = player_inv_data.inventory
-                                target_inv_id = player_inv_id
+                            -- Check if transfer to player inventory is allowed
+                            if inv_data.allow_player_transfer == false then
+                                if debug_mode then
+                                    log("[entity-gui-lib] Shift-click to player inventory blocked: allow_player_transfer = false")
+                                end
+                                -- Transfer blocked - don't set target_inv
+                            else
+                                local player_inv_id = "player_" .. player.index
+                                local player_inv_data = inv_refs[player_inv_id]
+                                if player_inv_data and player_inv_data.inventory and player_inv_data.inventory.valid then
+                                    target_inv = player_inv_data.inventory
+                                    target_inv_id = player_inv_id
+                                end
                             end
                         end
 
@@ -1015,6 +1023,19 @@ script.on_event(defines.events.on_gui_click, function(event)
                         allowed = inv_data.item_filter[item_name] == true
                     end
 
+                    -- Check if placing in player inventory is blocked due to transfer restriction
+                    local is_target_player_inv = type(inv_id) == "string" and inv_id:find("^player_")
+                    if is_target_player_inv then
+                        local cursor_source = storage.cursor_source and storage.cursor_source[player.index]
+                        if cursor_source and cursor_source.allow_player_transfer == false then
+                            -- Cursor items came from inventory that doesn't allow player transfer
+                            allowed = false
+                            if debug_mode then
+                                log("[entity-gui-lib] Placing in player inventory blocked: cursor source has allow_player_transfer = false")
+                            end
+                        end
+                    end
+
                     if allowed then
                         if inv_slot and inv_slot.valid_for_read then
                             -- Slot has items
@@ -1027,6 +1048,10 @@ script.on_event(defines.events.on_gui_click, function(event)
                                     inv_slot.count = inv_slot.count + to_insert
                                     if to_insert >= item_count then
                                         cursor.clear()
+                                        -- Clear cursor source tracking since cursor is now empty
+                                        if storage.cursor_source then
+                                            storage.cursor_source[player.index] = nil
+                                        end
                                     else
                                         cursor.count = item_count - to_insert
                                     end
@@ -1042,6 +1067,12 @@ script.on_event(defines.events.on_gui_click, function(event)
                                 cursor.set_stack{name = old_name, count = old_count, quality = old_quality}
                                 transfer_occurred = true
                                 transfer_type = "swap"
+                                -- Update cursor source tracking to this inventory (cursor now has items from here)
+                                storage.cursor_source = storage.cursor_source or {}
+                                storage.cursor_source[player.index] = {
+                                    inv_id = inv_id,
+                                    allow_player_transfer = inv_data.allow_player_transfer ~= false,
+                                }
                             end
                         else
                             -- Empty slot - insert cursor items
@@ -1049,6 +1080,10 @@ script.on_event(defines.events.on_gui_click, function(event)
                             cursor.clear()
                             transfer_occurred = true
                             transfer_type = "insert"
+                            -- Clear cursor source tracking since cursor is now empty
+                            if storage.cursor_source then
+                                storage.cursor_source[player.index] = nil
+                            end
                         end
                     end
                 elseif not event.shift then
@@ -1074,6 +1109,13 @@ script.on_event(defines.events.on_gui_click, function(event)
                         end
                         transfer_occurred = true
                         transfer_type = "take"
+
+                        -- Track cursor source for transfer restrictions
+                        storage.cursor_source = storage.cursor_source or {}
+                        storage.cursor_source[player.index] = {
+                            inv_id = inv_id,
+                            allow_player_transfer = inv_data.allow_player_transfer ~= false,
+                        }
                     end
                 end
 
@@ -2255,7 +2297,7 @@ remote.add_interface("entity_gui_lib", {
 
     ---Create an inventory display with slot buttons
     ---@param container LuaGuiElement Parent container
-    ---@param config table {inventory: LuaInventory, columns?: number, read_only?: boolean, show_empty?: boolean, interactive?: boolean, item_filter?: table<string, boolean>, mod_name?: string, on_click?: string, on_transfer?: string, data?: any}
+    ---@param config table {inventory: LuaInventory, columns?: number, read_only?: boolean, show_empty?: boolean, interactive?: boolean, allow_player_transfer?: boolean, item_filter?: table<string, boolean>, mod_name?: string, on_click?: string, on_transfer?: string, data?: any}
     ---@return LuaGuiElement scroll_pane, LuaGuiElement table
     create_inventory_display = function(container, config)
         local id = get_next_helper_id()
@@ -2268,6 +2310,7 @@ remote.add_interface("entity_gui_lib", {
         local show_empty = config.show_empty ~= false
         local interactive = config.interactive or false
         local read_only = config.read_only or false
+        local allow_player_transfer = config.allow_player_transfer ~= false  -- default true
 
         local scroll_pane = container.add{
             type = "scroll-pane",
@@ -2296,6 +2339,7 @@ remote.add_interface("entity_gui_lib", {
             on_transfer = config.on_transfer,
             data = config.data,
             interactive = interactive and not read_only,
+            allow_player_transfer = allow_player_transfer,
         }
 
         -- Store direct table reference for fast refresh (eliminates recursive DOM traversal)
