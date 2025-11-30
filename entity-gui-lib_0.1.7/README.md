@@ -105,6 +105,7 @@ script.on_load(register_guis)
 | `priority` | number | No | Priority for conflict resolution (default: 0, higher wins) |
 | `preview_size` | number | No | Size of entity preview in pixels (default: 148) |
 | `show_player_inventory` | boolean | No | Show player's inventory panel alongside entity GUI (default: false) |
+| `keep_vanilla_gui` | boolean | No | Keep the vanilla GUI open instead of replacing it (default: false) |
 
 ### Callback Signatures
 

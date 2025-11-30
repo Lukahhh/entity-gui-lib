@@ -484,8 +484,10 @@ script.on_event(defines.events.on_gui_opened, function(event)
         return
     end
 
-    -- Close the vanilla GUI
-    player.opened = nil
+    -- Close the vanilla GUI (unless mod requests to keep it)
+    if not registration.keep_vanilla_gui then
+        player.opened = nil
+    end
 
     -- Build custom GUI
     build_entity_gui(player, entity, registration)
@@ -1627,7 +1629,7 @@ end)
 -- Remote interface for other mods
 remote.add_interface("entity_gui_lib", {
     ---Register an entity for custom GUI replacement
-    ---@param config table {mod_name: string, entity_name?: string, entity_type?: string, title?: LocalisedString, on_build: string, on_close?: string, priority?: number, show_player_inventory?: boolean}
+    ---@param config table {mod_name: string, entity_name?: string, entity_type?: string, title?: LocalisedString, on_build: string, on_close?: string, priority?: number, show_player_inventory?: boolean, keep_vanilla_gui?: boolean}
     register = function(config)
         if not config then
             error("entity_gui_lib.register: config is required")
@@ -1657,6 +1659,7 @@ remote.add_interface("entity_gui_lib", {
             preview_size = config.preview_size,
             show_player_inventory = config.show_player_inventory or false,
             player_inventory_position = config.player_inventory_position or "right",
+            keep_vanilla_gui = config.keep_vanilla_gui or false,
         }
 
         -- Initialize list if needed
