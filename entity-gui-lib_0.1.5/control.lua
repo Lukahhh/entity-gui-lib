@@ -103,6 +103,24 @@ local function compute_inventory_hash(inventory)
     return hash
 end
 
+-- Helper to build a quality-aware tooltip for an item stack
+-- Returns a localised string with item name and quality indicator (if not normal)
+local function build_item_tooltip(stack)
+    if not stack or not stack.valid_for_read then
+        return ""
+    end
+
+    local base_tooltip = stack.prototype.localised_name
+
+    -- Check if item has quality above normal (level 0)
+    if stack.quality and stack.quality.level > 0 then
+        -- Build tooltip with quality icon and name: "Item Name\n[img=quality/rare] Rare"
+        return {"", base_tooltip, "\n[img=quality/" .. stack.quality.name .. "] ", stack.quality.localised_name}
+    end
+
+    return base_tooltip
+end
+
 ---@param player LuaPlayer
 ---@param entity LuaEntity
 ---@param registration table
@@ -334,11 +352,18 @@ local function build_entity_gui(player, entity, registration)
             local stack = player_inventory[i]
             local slot_name = GUI_PREFIX .. "inv_slot_" .. inv_id .. "_" .. i
 
+            -- Create container flow to allow quality badge overlay
+            local slot_container = player_inv_table.add{
+                type = "flow",
+            }
+            slot_container.style.size = {40, 40}
+            slot_container.style.horizontal_spacing = 0
+
             if stack and stack.valid_for_read then
                 -- Get quality name for storage (nil for normal quality)
                 local quality_name = stack.quality and stack.quality.name or nil
 
-                local button = player_inv_table.add{
+                local button = slot_container.add{
                     type = "sprite-button",
                     name = slot_name,
                     sprite = "item/" .. stack.name,
@@ -347,6 +372,20 @@ local function build_entity_gui(player, entity, registration)
                     style = "slot_button",
                 }
 
+                -- Add quality badge overlay for non-normal quality (bottom-left corner)
+                if stack.quality and stack.quality.level > 0 then
+                    local quality_badge = slot_container.add{
+                        type = "sprite",
+                        sprite = "quality/" .. stack.quality.name,
+                        ignored_by_interaction = true,
+                        resize_to_sprite = false,
+                    }
+                    quality_badge.style.width = 10
+                    quality_badge.style.height = 10
+                    quality_badge.style.left_margin = -36
+                    quality_badge.style.top_margin = 26
+                end
+
                 callbacks[slot_name] = {
                     slot_index = i,
                     item_stack = {name = stack.name, count = stack.count, quality = quality_name},
@@ -354,7 +393,7 @@ local function build_entity_gui(player, entity, registration)
                     inventory_id = inv_id,
                 }
             else
-                local button = player_inv_table.add{
+                local button = slot_container.add{
                     type = "sprite-button",
                     name = slot_name,
                     style = "slot_button",
@@ -589,41 +628,69 @@ local function get_next_helper_id()
     return helper_id_counter
 end
 
--- Helper to build a quality-aware tooltip for an item stack
--- Returns a localised string with item name and quality indicator (if not normal)
-local function build_item_tooltip(stack)
-    if not stack or not stack.valid_for_read then
-        return ""
-    end
-
-    local base_tooltip = stack.prototype.localised_name
-
-    -- Check if item has quality above normal (level 0)
-    if stack.quality and stack.quality.level > 0 then
-        -- Build tooltip with quality icon and name: "Item Name\n[img=quality/rare] Rare"
-        return {"", base_tooltip, "\n[img=quality/" .. stack.quality.name .. "] ", stack.quality.localised_name}
-    end
-
-    return base_tooltip
-end
-
--- Helper to update a single inventory slot visual
+-- Helper to update a single inventory slot visual (including quality badge)
 local function update_slot_visual(element, stack, callback_data)
     if not element or not element.valid then return end
+
+    -- Get parent container for quality badge handling
+    local parent = element.parent
+    local has_quality_badge = false
+    local quality_badge = nil
+
+    -- Find existing quality badge in parent (if parent is a flow container)
+    if parent and parent.valid and parent.type == "flow" then
+        for _, child in pairs(parent.children) do
+            if child.type == "sprite" and child.ignored_by_interaction then
+                quality_badge = child
+                break
+            end
+        end
+    end
 
     if stack and stack.valid_for_read then
         element.sprite = "item/" .. stack.name
         element.number = stack.count
         element.tooltip = build_item_tooltip(stack)
+
+        local quality_name = stack.quality and stack.quality.name or nil
+        local quality_level = stack.quality and stack.quality.level or 0
+
+        -- Update or create quality badge
+        if quality_level > 0 then
+            if quality_badge and quality_badge.valid then
+                -- Update existing badge
+                quality_badge.sprite = "quality/" .. stack.quality.name
+            elseif parent and parent.valid and parent.type == "flow" then
+                -- Create new badge (bottom-left corner)
+                quality_badge = parent.add{
+                    type = "sprite",
+                    sprite = "quality/" .. stack.quality.name,
+                    ignored_by_interaction = true,
+                    resize_to_sprite = false,
+                }
+                quality_badge.style.width = 10
+                quality_badge.style.height = 10
+                quality_badge.style.left_margin = -36
+                quality_badge.style.top_margin = 26
+            end
+        elseif quality_badge and quality_badge.valid then
+            -- Remove badge if item has no quality
+            quality_badge.destroy()
+        end
+
         if callback_data then
-            -- Store quality name for transfers and callbacks
-            local quality_name = stack.quality and stack.quality.name or nil
             callback_data.item_stack = {name = stack.name, count = stack.count, quality = quality_name}
         end
     else
         element.sprite = ""
         element.number = nil
         element.tooltip = ""
+
+        -- Remove quality badge for empty slot
+        if quality_badge and quality_badge.valid then
+            quality_badge.destroy()
+        end
+
         if callback_data then
             callback_data.item_stack = nil
         end
@@ -647,12 +714,18 @@ local function refresh_inventory_slots(inv_id)
     if is_player_inv then
         for player_index, gui_data in pairs(open_guis) do
             if gui_data.player_inv_table and gui_data.player_inv_table.valid then
-                for _, child in pairs(gui_data.player_inv_table.children) do
-                    if child.valid then
-                        local callback_data = callbacks[child.name]
-                        if callback_data and callback_data.inventory_id == inv_id then
-                            local stack = inventory[callback_data.slot_index]
-                            update_slot_visual(child, stack, callback_data)
+                for _, slot_container in pairs(gui_data.player_inv_table.children) do
+                    -- Each child is now a flow container; find the sprite-button inside
+                    if slot_container.valid and slot_container.type == "flow" then
+                        for _, child in pairs(slot_container.children) do
+                            if child.valid and child.type == "sprite-button" then
+                                local callback_data = callbacks[child.name]
+                                if callback_data and callback_data.inventory_id == inv_id then
+                                    local stack = inventory[callback_data.slot_index]
+                                    update_slot_visual(child, stack, callback_data)
+                                end
+                                break
+                            end
                         end
                     end
                 end
@@ -663,12 +736,18 @@ local function refresh_inventory_slots(inv_id)
         local inv_tables = storage.inventory_tables or {}
         local inv_table = inv_tables[inv_id]
         if inv_table and inv_table.valid then
-            for _, child in pairs(inv_table.children) do
-                if child.valid then
-                    local callback_data = callbacks[child.name]
-                    if callback_data then
-                        local stack = inventory[callback_data.slot_index]
-                        update_slot_visual(child, stack, callback_data)
+            for _, slot_container in pairs(inv_table.children) do
+                -- Each child is now a flow container; find the sprite-button inside
+                if slot_container.valid and slot_container.type == "flow" then
+                    for _, child in pairs(slot_container.children) do
+                        if child.valid and child.type == "sprite-button" then
+                            local callback_data = callbacks[child.name]
+                            if callback_data then
+                                local stack = inventory[callback_data.slot_index]
+                                update_slot_visual(child, stack, callback_data)
+                            end
+                            break
+                        end
                     end
                 end
             end
@@ -1172,12 +1251,18 @@ script.on_event(defines.events.on_tick, function(event)
                     gui_data.last_player_inv_hash = current_hash
                     local callbacks = get_helper_callbacks()
 
-                    for i, child in pairs(gui_data.player_inv_table.children) do
-                        if child.valid then
-                            local callback_data = callbacks[child.name]
-                            if callback_data then
-                                local stack = player_inv[callback_data.slot_index]
-                                update_slot_visual(child, stack, callback_data)
+                    for _, slot_container in pairs(gui_data.player_inv_table.children) do
+                        -- Each child is now a flow container; find the sprite-button inside
+                        if slot_container.valid and slot_container.type == "flow" then
+                            for _, child in pairs(slot_container.children) do
+                                if child.valid and child.type == "sprite-button" then
+                                    local callback_data = callbacks[child.name]
+                                    if callback_data then
+                                        local stack = player_inv[callback_data.slot_index]
+                                        update_slot_visual(child, stack, callback_data)
+                                    end
+                                    break
+                                end
                             end
                         end
                     end
@@ -1807,12 +1892,18 @@ remote.add_interface("entity_gui_lib", {
 
         local callbacks = get_helper_callbacks()
 
-        for i, child in pairs(inv_table.children) do
-            if child.valid and child.name:find("^" .. GUI_PREFIX .. "inv_slot_") then
-                local callback_data = callbacks[child.name]
-                if callback_data then
-                    local stack = inventory[callback_data.slot_index]
-                    update_slot_visual(child, stack, callback_data)
+        for _, slot_container in pairs(inv_table.children) do
+            -- Each child is now a flow container; find the sprite-button inside
+            if slot_container.valid and slot_container.type == "flow" then
+                for _, child in pairs(slot_container.children) do
+                    if child.valid and child.type == "sprite-button" and child.name:find("^" .. GUI_PREFIX .. "inv_slot_") then
+                        local callback_data = callbacks[child.name]
+                        if callback_data then
+                            local stack = inventory[callback_data.slot_index]
+                            update_slot_visual(child, stack, callback_data)
+                        end
+                        break
+                    end
                 end
             end
         end
@@ -2215,11 +2306,18 @@ remote.add_interface("entity_gui_lib", {
             local stack = inventory[i]
             local slot_name = GUI_PREFIX .. "inv_slot_" .. id .. "_" .. i
 
+            -- Create container flow to allow quality badge overlay
+            local slot_container = inv_table.add{
+                type = "flow",
+            }
+            slot_container.style.size = {40, 40}
+            slot_container.style.horizontal_spacing = 0
+
             if stack and stack.valid_for_read then
                 -- Get quality name for storage (nil for normal quality)
                 local quality_name = stack.quality and stack.quality.name or nil
 
-                local button = inv_table.add{
+                local button = slot_container.add{
                     type = "sprite-button",
                     name = slot_name,
                     sprite = "item/" .. stack.name,
@@ -2227,6 +2325,20 @@ remote.add_interface("entity_gui_lib", {
                     tooltip = build_item_tooltip(stack),
                     style = "slot_button",
                 }
+
+                -- Add quality badge overlay for non-normal quality (bottom-left corner)
+                if stack.quality and stack.quality.level > 0 then
+                    local quality_badge = slot_container.add{
+                        type = "sprite",
+                        sprite = "quality/" .. stack.quality.name,
+                        ignored_by_interaction = true,
+                        resize_to_sprite = false,
+                    }
+                    quality_badge.style.width = 10
+                    quality_badge.style.height = 10
+                    quality_badge.style.left_margin = -36
+                    quality_badge.style.top_margin = 26
+                end
 
                 callbacks[slot_name] = {
                     mod_name = config.mod_name,
@@ -2238,7 +2350,7 @@ remote.add_interface("entity_gui_lib", {
                     inventory_id = id,
                 }
             elseif show_empty then
-                local button = inv_table.add{
+                local button = slot_container.add{
                     type = "sprite-button",
                     name = slot_name,
                     style = "slot_button",

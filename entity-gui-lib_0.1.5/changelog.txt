@@ -1,4 +1,30 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.1.6
+Date: 2025-11-30
+  Features:
+    - Factorio 2.0 Quality Support
+      - Quality items now display with visual quality badge overlay in bottom-left corner
+      - Quality-aware tooltips show item name with quality icon and tier name
+      - Item transfers preserve quality (click, shift-click, swap operations)
+      - Only stacks items with matching quality levels
+      - Callbacks now receive quality in item_stack: {name, count, quality}
+  Affected Areas:
+    - Player inventory panel (show_player_inventory = true)
+    - Entity inventories via create_inventory_display
+    - All item transfer operations
+  Technical:
+    - Added build_item_tooltip() helper for quality-aware tooltips
+    - Updated compute_inventory_hash() to detect quality changes
+    - Updated update_slot_visual() to manage quality badge overlays
+    - All set_stack() calls now include quality parameter
+  Notes:
+    - Quality field is nil for normal quality items
+    - Quality name matches Factorio prototype names: "uncommon", "rare", "epic", "legendary"
+    - Existing mods using this library get quality support automatically
+    - Mods can optionally read item_stack.quality in callbacks for quality-specific logic
+
+
+---------------------------------------------------------------------------------------------------
 Version: 0.1.5
 Date: 2025-11-27
   Features:
