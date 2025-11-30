@@ -156,6 +156,54 @@ remote.call("entity_gui_lib", "register", {
 })
 ```
 
+### Extending Vanilla GUIs (Keep Vanilla GUI)
+
+By default, this library replaces the vanilla entity GUI with your custom GUI. If you want to **extend** the vanilla GUI instead—showing your custom panel alongside the original—use the `keep_vanilla_gui` option:
+
+```lua
+remote.add_interface("my_mod", {
+    build_info_panel = function(container, entity, player)
+        -- Add supplementary information alongside vanilla GUI
+        container.add{
+            type = "label",
+            caption = "Extra Stats",
+            style = "heading_2_label",
+        }
+
+        container.add{
+            type = "label",
+            caption = "Lifetime production: " .. (entity.products_finished or 0),
+        }
+
+        container.add{
+            type = "label",
+            caption = "Power usage: " .. string.format("%.1f kW", (entity.energy or 0) / 1000),
+        }
+    end,
+})
+
+remote.call("entity_gui_lib", "register", {
+    mod_name = "my_mod",
+    entity_type = "assembling-machine",
+    title = "Extra Info",
+    keep_vanilla_gui = true,  -- Vanilla GUI stays open!
+    on_build = "build_info_panel",
+    on_update = "build_info_panel",  -- Refresh stats periodically
+    update_interval = 60,
+})
+```
+
+**Use cases for `keep_vanilla_gui`:**
+- Adding stats/analytics panels to vanilla machines
+- Displaying additional entity information without losing vanilla controls
+- Creating overlay mods that enhance but don't replace functionality
+- Debugging tools that show internal entity state
+
+**Notes:**
+- Both GUIs operate independently—the player must close each one separately
+- Your custom frame appears centered; you may want to drag it to avoid overlap
+- The vanilla GUI remains fully functional (recipes, filters, etc. all work)
+
 ### Multiple Registrations & Priority
 
 When multiple mods register for the same entity, the highest priority wins:

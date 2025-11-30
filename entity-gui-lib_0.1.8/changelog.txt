@@ -1,4 +1,22 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.1.8
+Date: 2025-12-01
+  Features:
+    - Keep Vanilla GUI Option
+      - New keep_vanilla_gui registration option (default: false)
+      - When true, the vanilla entity GUI remains open instead of being replaced
+      - Custom GUI frame appears alongside the vanilla GUI
+      - Allows mods to extend/augment vanilla GUIs rather than fully replacing them
+  Example:
+    - remote.call("entity_gui_lib", "register", {
+        mod_name = "my_mod",
+        entity_name = "my-entity",
+        keep_vanilla_gui = true,
+        on_build = "build_my_gui",
+      })
+
+
+---------------------------------------------------------------------------------------------------
 Version: 0.1.7
 Date: 2025-11-30
   Features:
