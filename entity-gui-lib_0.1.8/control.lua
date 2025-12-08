@@ -276,8 +276,8 @@ local function build_entity_gui(player, entity, registration)
         if player.character then
             player_inventory = player.character.get_inventory(defines.inventory.character_main)
             inventory_label = player.name
-        else
-            -- Try god mode inventory (works in editor/god mode)
+        elseif player.controller_type == defines.controllers.god then
+            -- Only access god_main when player is actually in god mode (not just missing character)
             player_inventory = player.get_inventory(defines.inventory.god_main)
             inventory_label = player.name .. " (Editor)"
         end
@@ -1284,7 +1284,8 @@ script.on_event(defines.events.on_tick, function(event)
             local player_inv = nil
             if gui_data.player_inv_source == "character" and player.character then
                 player_inv = player.character.get_inventory(defines.inventory.character_main)
-            elseif gui_data.player_inv_source == "god" then
+            elseif gui_data.player_inv_source == "god" and player.controller_type == defines.controllers.god then
+                -- Only access god_main when player is actually in god mode
                 player_inv = player.get_inventory(defines.inventory.god_main)
             end
 
