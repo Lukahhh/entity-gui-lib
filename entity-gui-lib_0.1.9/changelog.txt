@@ -1,4 +1,14 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.1.9
+Date: 2025-12-09
+  Bugfixes:
+    - Fixed show_player_inventory triggering god mode / infinite crafting
+      - Accessing player.get_inventory(defines.inventory.god_main) had unintended side effects
+      - Now only accesses god_main inventory when player.controller_type is actually god mode
+      - Fixes issue where opening GUIs with show_player_inventory = true enabled cheat mode
+
+
+---------------------------------------------------------------------------------------------------
 Version: 0.1.8
 Date: 2025-12-01
   Features:
